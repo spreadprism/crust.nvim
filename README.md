@@ -1,3 +1,3 @@
 # crust.nvim
 
-nvim integration of [PI](pi.dev)
+nvim integration of [PI](https://pi.dev)
