@@ -16,7 +16,6 @@ M.DEFAULT_APPEND = table.concat({
 	"Your replies are rendered as markdown, so write them in markdown.",
 	"Always tag fenced code blocks with their language so they are highlighted,",
 	"for example ```lua instead of a bare fence.",
-	"Write file paths relative to the current working directory, not as absolute paths.",
 }, " ")
 
 --- Resolve a value that may be a string, a list of strings, or a function

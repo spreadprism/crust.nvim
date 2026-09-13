@@ -104,6 +104,60 @@ describe("ui.chat.output", function()
 		end)
 	end)
 
+	describe("markdown regions", function()
+		---@return integer[] rows of heading captures
+		local function heading_rows()
+			local parser = vim.treesitter.get_parser(out:buf())
+			local query = vim.treesitter.query.get("markdown", "highlights")
+			local rows = {}
+			for _, tree in ipairs(parser:parse(true)) do
+				for id, node in query:iter_captures(tree:root(), out:buf()) do
+					if query.captures[id]:match("heading") then
+						rows[#rows + 1] = (node:range())
+					end
+				end
+			end
+			return rows
+		end
+
+		it("keeps block rows out of the markdown tree", function()
+			out:append("# prose heading\n")
+			out:append_block({ "# not a heading" })
+			out:append("# another heading")
+
+			vim.wait(300, function()
+				return #heading_rows() == 2
+			end)
+			assert.are.same({ 0, 4 }, heading_rows())
+		end)
+
+		it("follows a block that grew", function()
+			local block = out:append_block({ "# one" })
+			out:replace_block(block, { "# one", "# two" })
+
+			vim.wait(300, function()
+				return #heading_rows() == 0
+			end)
+			assert.are.same({}, heading_rows())
+		end)
+
+		it("can be turned off", function()
+			local config = require("crust.config")
+			config.options = { raw_tool_blocks = false }
+			config.config = nil
+
+			local other = Output.new()
+			other:append_block({ "# still a heading" })
+			vim.wait(150)
+
+			local parser = vim.treesitter.get_parser(other:buf())
+			assert.are.equal(1, #parser:parse(true))
+
+			config.options = {}
+			config.config = nil
+		end)
+	end)
+
 	describe("helpers", function()
 		it("omits the rule for the first message", function()
 			local at = os.time({ year = 2024, month = 3, day = 7, hour = 9, min = 5 })

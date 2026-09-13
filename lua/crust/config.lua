@@ -4,6 +4,7 @@ local M = {}
 ---@field pending string
 ---@field success string
 ---@field error string
+---@field quote string drawn over the "> " prefix of tool blocks, "" keeps the raw text
 
 ---@class Crust.Config.Labels
 ---@field user string
@@ -42,13 +43,18 @@ local M = {}
 ---@field spinner string|string[]|Crust.Spinner preset name ("robot", "classic", "dots") or a custom definition
 ---@field status_text string shown next to the spinner while the agent works, empty for the icon alone
 ---@field keymaps Crust.Config.Keymaps
+---@field raw_tool_blocks boolean keep tool blocks out of the markdown tree
 M.defaults = {
 	bin = "pi",
 	icons = {
 		pending = "󰔟",
 		success = "󰄬",
 		error = "󰅖",
+		quote = "▋",
 	},
+	-- Tool blocks are excluded from the markdown tree, so markdown plugins
+	-- leave them alone. Crust draws their highlights itself.
+	raw_tool_blocks = true,
 	labels = {
 		user = "",
 		agent = "󰚩",

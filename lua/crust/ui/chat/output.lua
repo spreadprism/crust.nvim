@@ -3,6 +3,8 @@
 ---@class Crust.Chat.Output
 ---@field private _buf integer
 ---@field private _win integer?
+---@field private _blocks Crust.Chat.Output.Block[]
+---@field private _regions_timer uv.uv_timer_t?
 local Output = {}
 Output.__index = Output
 
@@ -12,6 +14,10 @@ Output.SEPARATOR = "---"
 local scratch = require("crust.ui.scratch")
 local Highlights = require("crust.ui.highlights")
 local RenderMarkdown = require("crust.integrations.render_markdown")
+local Regions = require("crust.ui.regions")
+
+--- Quiet period before the markdown regions are recomputed.
+local REGIONS_DEBOUNCE_MS = 50
 
 --- Tracks appended blocks so they can be rewritten after later appends.
 local ns = vim.api.nvim_create_namespace("crust.chat.output.blocks")
@@ -28,6 +34,7 @@ function Output.new()
 
 	Highlights.setup()
 	self._buf = scratch("crust://chat", Output.FILETYPE, true)
+	self._blocks = {}
 	vim.bo[self._buf].modifiable = false
 	self._win = nil
 
@@ -83,6 +90,12 @@ function Output:close()
 	end
 	self._win = nil
 	RenderMarkdown.detach(self._buf)
+
+	if self._regions_timer then
+		self._regions_timer:stop()
+		self._regions_timer:close()
+		self._regions_timer = nil
+	end
 end
 
 --- Append raw text, continuing the last line (streaming friendly).
@@ -177,6 +190,10 @@ function Output:_highlight_block(first, count, highlights, line_highlights)
 			end_col = hl.end_col,
 			hl_group = hl.group,
 			priority = hl.priority,
+			-- Blocks are excluded from the markdown tree, so a quote marker
+			-- has to be drawn here instead of by render-markdown.
+			virt_text = hl.overlay and { { hl.overlay, hl.group } } or nil,
+			virt_text_pos = hl.overlay and "overlay" or nil,
 		})
 	end
 end
@@ -214,10 +231,51 @@ function Output:append_block(lines, highlights, line_highlights, compact)
 	self:append(prefix .. table.concat(lines, "\n") .. "\n\n")
 	local first = vim.api.nvim_buf_line_count(self._buf) - 2 - #lines
 	self:_highlight_block(first, #lines, highlights, line_highlights)
-	return {
+
+	---@type Crust.Chat.Output.Block
+	local block = {
 		id = vim.api.nvim_buf_set_extmark(self._buf, ns, first, 0, {}),
 		count = #lines,
 	}
+	self._blocks[#self._blocks + 1] = block
+	self:_refresh_regions()
+
+	return block
+end
+
+--- Rows currently covered by blocks, resolved through their extmarks.
+---@private
+---@return Crust.Regions.Range[]
+function Output:_block_ranges()
+	local ranges = {}
+	for _, block in ipairs(self._blocks) do
+		local pos = vim.api.nvim_buf_get_extmark_by_id(self._buf, ns, block.id, {})
+		if pos[1] then
+			ranges[#ranges + 1] = { first = pos[1], last = pos[1] + block.count }
+		end
+	end
+	return ranges
+end
+
+--- Keep tool blocks out of the markdown tree so nothing styles them. Our own
+--- highlights and prefix icons are extmarks, they are unaffected.
+---@private
+function Output:_refresh_regions()
+	if not require("crust.config").get().raw_tool_blocks then
+		return
+	end
+
+	self._regions_timer = self._regions_timer or assert(vim.uv.new_timer())
+	self._regions_timer:stop()
+	self._regions_timer:start(
+		REGIONS_DEBOUNCE_MS,
+		0,
+		vim.schedule_wrap(function()
+			if vim.api.nvim_buf_is_valid(self._buf) then
+				Regions.exclude(self._buf, self:_block_ranges())
+			end
+		end)
+	)
 end
 
 --- Rewrite a block in place, wherever it has drifted to.
@@ -247,6 +305,7 @@ function Output:replace_block(block, lines, highlights, line_highlights)
 	vim.bo[self._buf].modifiable = false
 	block.count = #lines
 	self:_highlight_block(pos[1], #lines, highlights, line_highlights)
+	self:_refresh_regions()
 
 	self:follow()
 	self:_render_markdown()

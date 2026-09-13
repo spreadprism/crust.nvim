@@ -46,6 +46,7 @@ local Syntax = require("crust.ui.syntax")
 ---@field col integer byte offset, 0-based
 ---@field end_col integer byte offset, exclusive
 ---@field group string highlight group
+---@field overlay? string text drawn over the range, e.g. the quote marker
 
 ---@class Crust.Chat.Tools.Render
 ---@field lines string[]
@@ -344,10 +345,20 @@ function Display:_prefix_block(render)
 		hl.end_col = hl.end_col + #prefix
 	end
 
+	-- The block is kept out of the markdown tree, so the quote marker that
+	-- render-markdown would draw for "> " is drawn here instead.
+	local icon = Config.get().icons.quote
+	local overlay = icon and icon ~= "" and (icon .. string.rep(" ", math.max(#prefix - #icon, 0))) or nil
+
 	for index, line in ipairs(render.lines) do
 		render.lines[index] = vim.trim(line) == "" and prefix or (prefix .. line)
-		render.highlights[#render.highlights + 1] =
-			{ line = index, col = 0, end_col = #prefix, group = Highlights.TOOL_PREFIX }
+		render.highlights[#render.highlights + 1] = {
+			line = index,
+			col = 0,
+			end_col = #prefix,
+			group = Highlights.TOOL_PREFIX,
+			overlay = overlay,
+		}
 	end
 
 	return render
