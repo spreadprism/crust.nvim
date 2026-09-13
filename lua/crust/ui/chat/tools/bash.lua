@@ -5,6 +5,8 @@ local MAX_BODY_LINES = 10
 ---@type Crust.Chat.Tools.Spec
 return {
 	title_lang = "bash",
+	title_prefix = "> ",
+	body_prefix = "> ",
 
 	title = function(display)
 		local command = display.args.command

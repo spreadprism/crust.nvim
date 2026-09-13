@@ -21,6 +21,8 @@
 ---@field inline? boolean|fun(display: Crust.Chat.Tools.Display): boolean render the body on the title line instead of under it
 ---@field title_lang? string treesitter language used to highlight the title
 ---@field body_lang? string treesitter language used to highlight the body
+---@field title_prefix? string written before the title, e.g. "> "
+---@field body_prefix? string written before each body line, default two spaces
 
 ---@class Crust.Chat.Tools.Display
 ---@field name string tool name
@@ -159,8 +161,9 @@ end
 ---@param lang string?
 ---@param line integer rendered line holding the first line of `text`
 ---@param col integer byte offset of `text` on that line
+---@param continuation? integer byte offset of the following lines, default `col`
 ---@return Crust.Chat.Tools.Highlight[]?
-local function syntax_highlights(text, lang, line, col)
+local function syntax_highlights(text, lang, line, col, continuation)
 	if not lang then
 		return nil
 	end
@@ -173,7 +176,7 @@ local function syntax_highlights(text, lang, line, col)
 	local highlights = {}
 	for _, range in ipairs(ranges) do
 		-- Only the first line starts at `col`, later ones start at the indent.
-		local offset = range.line == 1 and col or 2
+		local offset = range.line == 1 and col or (continuation or col)
 		highlights[#highlights + 1] = {
 			line = line + range.line - 1,
 			col = offset + range.col,
@@ -214,8 +217,17 @@ function Display:render()
 	if title ~= "" then
 		head = head .. ":"
 		highlights[#highlights].end_col = #head
-		local col = #head + 1
-		head = head .. " " .. title
+
+		local prefix = self.spec.title_prefix or ""
+		local prefix_col = #head + 1
+		local col = prefix_col + #prefix
+		head = head .. " " .. prefix .. title
+
+		if prefix ~= "" then
+			highlights[#highlights + 1] =
+				{ line = 1, col = prefix_col, end_col = col, group = Highlights.TOOL_PREFIX }
+		end
+
 		local syntax = syntax_highlights(title, self.spec.title_lang, 1, col)
 		if syntax then
 			vim.list_extend(highlights, syntax)
@@ -223,7 +235,7 @@ function Display:render()
 			highlights[#highlights + 1] = { line = 1, col = col, end_col = #head, group = Highlights.TOOL_TITLE }
 		end
 		-- Only the title text is shaded, not the icon and tool name.
-		background(highlights, 1, col, #head, Highlights.TOOL_BACKGROUND)
+		background(highlights, 1, prefix_col, #head, Highlights.TOOL_BACKGROUND)
 	end
 
 	local lines = { head }
@@ -248,20 +260,26 @@ function Display:render()
 		return { lines = lines, highlights = highlights, line_highlights = line_highlights }
 	end
 
+	local body_prefix = self.spec.body_prefix or "  "
 	local body_line = #lines + 1
 	for _, line in ipairs(body) do
-		lines[#lines + 1] = "  " .. line
+		lines[#lines + 1] = vim.trim(body_prefix .. line) == "" and body_prefix or (body_prefix .. line)
 		-- Tool output gets a full-width line background.
 		line_highlights[#lines] = Highlights.TOOL_BODY_BACKGROUND
+		if self.spec.body_prefix then
+			highlights[#highlights + 1] =
+				{ line = #lines, col = 0, end_col = #body_prefix, group = Highlights.TOOL_PREFIX }
+		end
 	end
 
-	local syntax = #body > 0 and syntax_highlights(table.concat(body, "\n"), self.spec.body_lang, body_line, 2)
+	local syntax = #body > 0
+		and syntax_highlights(table.concat(body, "\n"), self.spec.body_lang, body_line, #body_prefix, #body_prefix)
 	if syntax then
 		vim.list_extend(highlights, syntax)
 	else
 		for index = body_line, #lines do
 			highlights[#highlights + 1] =
-				{ line = index, col = 2, end_col = #lines[index], group = Highlights.TOOL_BODY }
+				{ line = index, col = #body_prefix, end_col = #lines[index], group = Highlights.TOOL_BODY }
 		end
 	end
 

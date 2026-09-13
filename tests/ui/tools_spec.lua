@@ -170,7 +170,12 @@ describe("ui.chat.tools", function()
 			assert.are.same({
 				{ Highlights.TOOL_ICON_SUCCESS, icons.success },
 				{ Highlights.TOOL, "bash:" },
+				{ Highlights.TOOL_PREFIX, "> " },
 				{ Highlights.TOOL_TITLE, "ls" },
+				-- body prefixes are emitted while laying out the lines,
+				-- the body text highlights follow
+				{ Highlights.TOOL_PREFIX, "> " },
+				{ Highlights.TOOL_PREFIX, "> " },
 				{ Highlights.TOOL_BODY, "a" },
 				{ Highlights.TOOL_BODY, "b" },
 			}, segments(display))
@@ -272,7 +277,7 @@ describe("ui.chat.tools", function()
 			local display = Display.new("bash", Tools.spec("bash"), { command = "echo foobar" })
 			display:update({ type = "tool_execution_end", result = result("foobar") })
 
-			assert.are.same({ { Highlights.TOOL_BACKGROUND, "echo foobar" } }, backgrounds(display))
+			assert.are.same({ { Highlights.TOOL_BACKGROUND, "> echo foobar" } }, backgrounds(display))
 		end)
 
 		it("gives output lines a full-width line background", function()
@@ -280,7 +285,7 @@ describe("ui.chat.tools", function()
 			display:update({ type = "tool_execution_end", result = result("foo\nbar") })
 
 			local render = display:render()
-			assert.are.same({ "  foo", "  bar" }, { render.lines[2], render.lines[3] })
+			assert.are.same({ "> foo", "> bar" }, { render.lines[2], render.lines[3] })
 			assert.are.same({
 				[2] = Highlights.TOOL_BODY_BACKGROUND,
 				[3] = Highlights.TOOL_BODY_BACKGROUND,
@@ -450,7 +455,7 @@ describe("ui.chat.tools", function()
 		it("keeps bash multi-line", function()
 			local display = Display.new("bash", Tools.spec("bash"), { command = "ls" })
 			display:update({ type = "tool_execution_end", result = result("a\nb") })
-			assert.are.same({ icons.success .. " bash: ls", "  a", "  b" }, display:lines())
+			assert.are.same({ icons.success .. " bash: > ls", "> a", "> b" }, display:lines())
 		end)
 
 		it("registers a custom spec", function()
@@ -485,7 +490,7 @@ describe("ui.chat.tools", function()
 				toolName = "bash",
 				args = { command = "sleep 2" },
 			})
-			assert.are.same({ icons.pending .. " bash: sleep 2", "", "" }, out:lines())
+			assert.are.same({ icons.pending .. " bash: > sleep 2", "", "" }, out:lines())
 
 			tools:render(out, {
 				type = "tool_execution_update",
@@ -500,7 +505,7 @@ describe("ui.chat.tools", function()
 				result = result("hi"),
 			})
 
-			assert.are.same({ icons.success .. " bash: sleep 2", "  hi", "", "" }, out:lines())
+			assert.are.same({ icons.success .. " bash: > sleep 2", "> hi", "", "" }, out:lines())
 		end)
 
 		it("keeps assistant text streamed between tool events out of the block", function()
@@ -519,8 +524,8 @@ describe("ui.chat.tools", function()
 			})
 
 			assert.are.same({
-				icons.success .. " bash: ls",
-				"  done",
+				icons.success .. " bash: > ls",
+				"> done",
 				"",
 				"thinking…",
 			}, out:lines())
@@ -532,10 +537,10 @@ describe("ui.chat.tools", function()
 			tools:render(out, { type = "tool_execution_end", toolCallId = "a", toolName = "bash", result = result("1") })
 
 			assert.are.same({
-				icons.success .. " bash: one",
-				"  1",
+				icons.success .. " bash: > one",
+				"> 1",
 				"",
-				icons.pending .. " bash: two",
+				icons.pending .. " bash: > two",
 				"",
 				"",
 			}, out:lines())

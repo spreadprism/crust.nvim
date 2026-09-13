@@ -12,6 +12,7 @@ M.TOOL = "CrustTool"
 M.TOOL_TITLE = "CrustToolTitle"
 M.TOOL_BODY = "CrustToolBody"
 M.TOOL_BODY_INLINE = "CrustToolBodyInline"
+M.TOOL_PREFIX = "CrustToolPrefix"
 M.TOOL_BACKGROUND = "CrustToolBackground"
 M.TOOL_BODY_BACKGROUND = "CrustToolBodyBackground"
 M.TOOL_ICON_PENDING = "CrustToolIconPending"
@@ -28,10 +29,11 @@ M.groups = {
 	[M.TOOL_TITLE] = { link = "Directory" },
 	[M.TOOL_BODY] = { link = "Normal" },
 	[M.TOOL_BODY_INLINE] = { link = "Comment" },
-	-- Full-line backgrounds, applied with line_hl_group. Link them to
-	-- "Normal" to turn the shading off.
-	[M.TOOL_BACKGROUND] = { link = "CursorLine" },
-	[M.TOOL_BODY_BACKGROUND] = { link = "CursorLine" },
+	[M.TOOL_PREFIX] = { link = "Comment" },
+	-- Code-block shading. RenderMarkdownCode comes from render-markdown.nvim;
+	-- CursorLine is the fallback when that plugin is absent.
+	[M.TOOL_BACKGROUND] = { link = "RenderMarkdownCode" },
+	[M.TOOL_BODY_BACKGROUND] = { link = "RenderMarkdownCode" },
 	[M.TOOL_ICON_PENDING] = { link = "DiagnosticWarn" },
 	[M.TOOL_ICON_SUCCESS] = { link = "DiagnosticOk" },
 	[M.TOOL_ICON_ERROR] = { link = "DiagnosticError" },
@@ -53,6 +55,12 @@ function M.setup(force)
 		return
 	end
 	applied = true
+
+	-- Without render-markdown.nvim the code group does not exist, so the
+	-- shading falls back to CursorLine.
+	if vim.fn.hlexists("RenderMarkdownCode") == 0 then
+		vim.api.nvim_set_hl(0, "RenderMarkdownCode", { link = "CursorLine", default = true })
+	end
 
 	for name, def in pairs(M.groups) do
 		vim.api.nvim_set_hl(0, name, vim.tbl_extend("keep", def, { default = true }))
