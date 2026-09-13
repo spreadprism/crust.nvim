@@ -100,6 +100,84 @@ describe("prompt", function()
 		end)
 	end)
 
+	describe("context", function()
+		local dir
+
+		before_each(function()
+			dir = vim.fn.tempname()
+			vim.fn.mkdir(dir, "p")
+		end)
+
+		after_each(function()
+			vim.fn.delete(dir, "rf")
+		end)
+
+		---@param name string
+		---@return string path
+		local function write(name, text)
+			local path = dir .. "/" .. name
+			vim.fn.writefile({ text }, path)
+			return path
+		end
+
+		it("adds nothing by default, pi keeps discovering context files", function()
+			assert.are.same({}, Prompt.context_args())
+		end)
+
+		it("disables discovery when asked", function()
+			assert.are.same({ "--no-context-files" }, Prompt.context_args({ enabled = false }))
+		end)
+
+		it("appends extra context files", function()
+			local path = write("EXTRA.md", "extra")
+			assert.are.same({ "--append-system-prompt", path }, Prompt.context_args({ files = path }))
+		end)
+
+		it("expands paths", function()
+			local path = write("EXTRA.md", "extra")
+			local args = Prompt.context_args({ files = { path } })
+			assert.are.equal(vim.fn.fnamemodify(path, ":p"), args[2])
+		end)
+
+		it("skips files that do not exist", function()
+			assert.are.same({}, Prompt.context_files({ files = dir .. "/missing.md" }))
+		end)
+
+		it("appends extra context lines after the files", function()
+			local path = write("EXTRA.md", "extra")
+			assert.are.same({
+				"--append-system-prompt",
+				path,
+				"--append-system-prompt",
+				"a line",
+			}, Prompt.context_args({ files = path, append = "a line" }))
+		end)
+
+		it("accepts functions and lists", function()
+			local args = Prompt.context_args({
+				append = function()
+					return { "one", "two" }
+				end,
+			})
+			assert.are.same({
+				"--append-system-prompt",
+				"one",
+				"--append-system-prompt",
+				"two",
+			}, args)
+		end)
+
+		it("reads the config when no options are given", function()
+			config.options = { context = { enabled = false, append = "from config" } }
+			config.config = nil
+			assert.are.same({
+				"--no-context-files",
+				"--append-system-prompt",
+				"from config",
+			}, Prompt.context_args())
+		end)
+	end)
+
 	describe("pi client", function()
 		it("puts the prompt flags on the command line", function()
 			config.options = { prompt = { system_prompt = "base", append = "extra", include_defaults = false } }
@@ -113,6 +191,7 @@ describe("prompt", function()
 			assert.is_truthy(cmd:find("--mode rpc", 1, true))
 		end)
 
+
 		it("accepts a per-client prompt", function()
 			local pi = require("crust.pi.client").new({
 				log = false,
@@ -125,6 +204,26 @@ describe("prompt", function()
 				"--mode",
 				"rpc",
 			}, pi:_command())
+		end)
+
+		it("puts the context flags on the command line", function()
+			local pi = require("crust.pi.client").new({
+				log = false,
+				prompt = { include_defaults = false },
+				context = { append = "extra context" },
+			})
+			assert.are.same({
+				"pi",
+				"--append-system-prompt",
+				"extra context",
+				"--mode",
+				"rpc",
+			}, pi:_command())
+		end)
+
+		it("leaves pi's context discovery alone by default", function()
+			local cmd = table.concat(require("crust.pi.client").new({ log = false }):_command(), " ")
+			assert.is_falsy(cmd:find("--no-context-files", 1, true))
 		end)
 	end)
 end)

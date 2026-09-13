@@ -6,6 +6,7 @@
 ---@field on_event? fun(event: Crust.Pi.Event) called for every decoded rpc event
 ---@field log? boolean|string false disables the transcript, a string names the session
 ---@field prompt? Crust.Config.Prompt system prompt overrides, defaults to `config.prompt`
+---@field context? Crust.Config.Context context overrides, defaults to `config.context`
 
 ---@class Crust.Pi Pi instance process that manages everything
 ---@field opts Crust.Pi.Opts
@@ -64,6 +65,7 @@ function Pi:_command()
 		vim.list_extend(cmd, { "--model", self.opts.model })
 	end
 	vim.list_extend(cmd, Prompt.args(self.opts.prompt))
+	vim.list_extend(cmd, Prompt.context_args(self.opts.context))
 	vim.list_extend(cmd, { "--mode", "rpc" })
 	return cmd
 end

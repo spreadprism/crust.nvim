@@ -1,8 +1,11 @@
---- System prompt assembly for the pi process.
+--- System prompt and context assembly for the pi process.
 ---
 --- pi takes `--system-prompt <text>` (replaces its default) and any number of
 --- `--append-system-prompt <text>` (appended, text or a file path). Crust adds
 --- its own appended block, and the user's additions are concatenated after it.
+---
+--- Extra context works the same way: pi discovers AGENTS.md and CLAUDE.md on
+--- its own, and additional files or lines are appended on top of that.
 
 ---@class Crust.Prompt
 local M = {}
@@ -13,6 +16,7 @@ M.DEFAULT_APPEND = table.concat({
 	"Your replies are rendered as markdown, so write them in markdown.",
 	"Always tag fenced code blocks with their language so they are highlighted,",
 	"for example ```lua instead of a bare fence.",
+	"Write file paths relative to the current working directory, not as absolute paths.",
 }, " ")
 
 --- Resolve a value that may be a string, a list of strings, or a function
@@ -74,6 +78,49 @@ function M.appends(cfg)
 	vim.list_extend(appends, M.resolve(cfg.append))
 
 	return appends
+end
+
+--- Extra context files, expanded and filtered to what exists on disk.
+---@param cfg? Crust.Config.Context
+---@return string[] paths
+function M.context_files(cfg)
+	cfg = cfg or require("crust.config").get().context
+
+	local paths = {}
+	for _, path in ipairs(M.resolve(cfg.files)) do
+		local full = vim.fn.fnamemodify(vim.fn.expand(path), ":p")
+		if vim.fn.filereadable(full) == 1 then
+			paths[#paths + 1] = full
+		else
+			vim.notify("crust: context file not found: " .. path, vim.log.levels.WARN)
+		end
+	end
+
+	return paths
+end
+
+--- Build the context part of the pi command line. pi keeps discovering the
+--- project's own AGENTS.md and CLAUDE.md unless `enabled` is false.
+---@param cfg? Crust.Config.Context defaults to `config.get().context`
+---@return string[] args
+function M.context_args(cfg)
+	cfg = cfg or require("crust.config").get().context
+
+	local args = {}
+	if cfg.enabled == false then
+		args[#args + 1] = "--no-context-files"
+	end
+
+	-- Files first, so literal lines can override what they say.
+	for _, path in ipairs(M.context_files(cfg)) do
+		vim.list_extend(args, { "--append-system-prompt", path })
+	end
+
+	for _, text in ipairs(M.resolve(cfg.append)) do
+		vim.list_extend(args, { "--append-system-prompt", text })
+	end
+
+	return args
 end
 
 return M
