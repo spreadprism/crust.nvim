@@ -146,7 +146,7 @@ function Chat:resize()
 
 	self._output:set_width(math.floor(vim.o.columns * WIDTH_RATIO))
 	self._input:restore_height()
-	self._status:render()
+	self._status:update_window()
 end
 
 function Chat:close()

@@ -498,6 +498,89 @@ describe("ui.chat.tools", function()
 			assert.are.same({ "> " .. icons.success .. " bash: ls", "> a", "> b" }, display:lines())
 		end)
 
+		describe("edit", function()
+			local PATH = "sample.lua"
+
+			---@param diff string?
+			---@return Crust.Pi.ToolResult
+			local function edit_result(diff)
+				return {
+					content = { { type = "text", text = "Successfully replaced 1 block(s) in " .. PATH .. "." } },
+					details = diff and { diff = diff } or nil,
+				}
+			end
+
+			---@param args table
+			---@return Crust.Chat.Tools.Display
+			local function display_for(args)
+				return Display.new("edit", Tools.spec("edit"), args)
+			end
+
+			it("renders the path inline, like read", function()
+				local display = display_for({ path = PATH, edits = { { oldText = "a", newText = "b" } } })
+				display:update({
+					type = "tool_execution_end",
+					result = edit_result(" 1 local a = 1\n-2 local b = 2\n+2 local b = 42\n 3 local c = 3"),
+				})
+
+				assert.is_true(display:is_inline())
+				assert.are.equal(PATH, display:title())
+				assert.are.same({ "> " .. icons.success .. " edit: " .. PATH .. " +1 -1" }, display:lines())
+			end)
+
+			it("counts added and removed lines from the diff", function()
+				local display = display_for({ path = PATH, edits = { { oldText = "a", newText = "b" } } })
+				display:update({
+					type = "tool_execution_end",
+					result = edit_result(" 1 keep\n-2 gone\n-3 gone\n+2 new\n 4 keep"),
+				})
+
+				assert.are.same({ "+1 -2" }, display:body())
+			end)
+
+			it("falls back to the number of edits without a diff", function()
+				local display = display_for({
+					path = PATH,
+					edits = { { oldText = "a", newText = "b" }, { oldText = "c", newText = "d" } },
+				})
+				display:update({ type = "tool_execution_end", result = edit_result(nil) })
+
+				assert.are.same({ "2 edits" }, display:body())
+			end)
+
+			it("says one edit in the singular", function()
+				local display = display_for({ path = PATH, edits = { { oldText = "a", newText = "b" } } })
+				display:update({ type = "tool_execution_end", result = edit_result(nil) })
+
+				assert.are.same({ "1 edit" }, display:body())
+			end)
+
+			it("shows nothing while pending", function()
+				local display = display_for({ path = PATH, edits = { { oldText = "a", newText = "b" } } })
+				assert.are.same({}, display:body())
+				assert.are.same({ "> " .. icons.pending .. " edit: " .. PATH }, display:lines())
+			end)
+
+			it("renders a failure as a multi-line body", function()
+				local display = display_for({ path = "gone.lua", edits = { { oldText = "x", newText = "y" } } })
+				display:update({
+					type = "tool_execution_end",
+					isError = true,
+					result = result("Could not find edits[0] in gone.lua"),
+				})
+
+				assert.is_false(display:is_inline())
+				assert.are.same({
+					"> " .. icons.error .. " edit: gone.lua",
+					"> Could not find edits[0] in gone.lua",
+				}, display:lines())
+			end)
+
+			it("shows only the tool name without a path", function()
+				assert.are.equal("", display_for({}):title())
+			end)
+		end)
+
 		it("registers a custom spec", function()
 			Tools.register("custom-tool", { title = "custom!" })
 			assert.are.equal("custom!", Tools.spec("custom-tool").title)
