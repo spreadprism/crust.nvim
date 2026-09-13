@@ -141,8 +141,14 @@ end
 ---@param first integer 0-based row of the block's first line
 ---@param count integer lines in the block
 ---@param highlights? Crust.Chat.Tools.Highlight[]
-function Output:_highlight_block(first, count, highlights)
+---@param line_highlights? table<integer, string> full-line backgrounds
+function Output:_highlight_block(first, count, highlights, line_highlights)
 	vim.api.nvim_buf_clear_namespace(self._buf, hl_ns, first, first + count)
+
+	for line, group in pairs(line_highlights or {}) do
+		vim.api.nvim_buf_set_extmark(self._buf, hl_ns, first + line - 1, 0, { line_hl_group = group })
+	end
+
 	for _, hl in ipairs(highlights or {}) do
 		vim.api.nvim_buf_set_extmark(self._buf, hl_ns, first + hl.line - 1, hl.col, {
 			end_col = hl.end_col,
@@ -155,13 +161,14 @@ end
 --- side so streamed text never reads as part of the block.
 ---@param lines string[]
 ---@param highlights? Crust.Chat.Tools.Highlight[]
+---@param line_highlights? table<integer, string>
 ---@return Crust.Chat.Output.Block
-function Output:append_block(lines, highlights)
+function Output:append_block(lines, highlights, line_highlights)
 	local prefix = self:_trim_trailing_blanks() and "\n\n" or ""
 
 	self:append(prefix .. table.concat(lines, "\n") .. "\n\n")
 	local first = vim.api.nvim_buf_line_count(self._buf) - 2 - #lines
-	self:_highlight_block(first, #lines, highlights)
+	self:_highlight_block(first, #lines, highlights, line_highlights)
 	return {
 		id = vim.api.nvim_buf_set_extmark(self._buf, ns, first, 0, {}),
 		count = #lines,
@@ -172,7 +179,8 @@ end
 ---@param block Crust.Chat.Output.Block
 ---@param lines string[]
 ---@param highlights? Crust.Chat.Tools.Highlight[]
-function Output:replace_block(block, lines, highlights)
+---@param line_highlights? table<integer, string>
+function Output:replace_block(block, lines, highlights, line_highlights)
 	if not vim.api.nvim_buf_is_valid(self._buf) then
 		return
 	end
@@ -182,6 +190,10 @@ function Output:replace_block(block, lines, highlights)
 		return
 	end
 
+	-- Clear before rewriting: marks on replaced lines drift to the end of
+	-- the new text, where a later clear would no longer cover them.
+	vim.api.nvim_buf_clear_namespace(self._buf, hl_ns, pos[1], pos[1] + block.count)
+
 	vim.bo[self._buf].modifiable = true
 	vim.api.nvim_buf_set_lines(self._buf, pos[1], pos[1] + block.count, false, lines)
 	-- Replacing the anchored line moves the extmark to the end of the new
@@ -189,7 +201,7 @@ function Output:replace_block(block, lines, highlights)
 	vim.api.nvim_buf_set_extmark(self._buf, ns, pos[1], 0, { id = block.id })
 	vim.bo[self._buf].modifiable = false
 	block.count = #lines
-	self:_highlight_block(pos[1], #lines, highlights)
+	self:_highlight_block(pos[1], #lines, highlights, line_highlights)
 
 	self:follow()
 	self:_render_markdown()

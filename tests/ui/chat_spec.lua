@@ -155,7 +155,7 @@ describe("ui.chat", function()
 				"",
 				"Running.",
 				"",
-				icons.success .. " bash sleep 2",
+				icons.success .. " bash: sleep 2",
 				"  hi",
 				"",
 				"Done.",

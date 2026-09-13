@@ -65,7 +65,7 @@ describe("ui.chat.tools", function()
 
 		it("renders icon, tool name, then title", function()
 			local display = Display.new("bash", { title = "tool title" }, {})
-			assert.are.equal(icons.pending .. " bash tool title", display:lines()[1])
+			assert.are.equal(icons.pending .. " bash: tool title", display:lines()[1])
 		end)
 
 		it("renders the tool name alone when there is no title", function()
@@ -83,7 +83,7 @@ describe("ui.chat.tools", function()
 				end,
 			}, {})
 			assert.are.same({
-				icons.pending .. " thing thing!",
+				icons.pending .. " thing: thing!",
 				"  one",
 				"  two",
 			}, display:lines())
@@ -98,12 +98,12 @@ describe("ui.chat.tools", function()
 				end,
 			}, {})
 			assert.is_true(display:is_inline())
-			assert.are.same({ icons.pending .. " thing do it fast twice" }, display:lines())
+			assert.are.same({ icons.pending .. " thing: do it fast twice" }, display:lines())
 		end)
 
 		it("renders an inline title alone when the body is empty", function()
 			local display = Display.new("thing", { inline = true, title = "do it" }, {})
-			assert.are.same({ icons.pending .. " thing do it" }, display:lines())
+			assert.are.same({ icons.pending .. " thing: do it" }, display:lines())
 		end)
 
 		it("is not inline unless the spec asks for it", function()
@@ -136,7 +136,7 @@ describe("ui.chat.tools", function()
 
 			assert.are.same({
 				{ Highlights.TOOL_ICON_SUCCESS, icons.success },
-				{ Highlights.TOOL, "read" },
+				{ Highlights.TOOL, "read:" },
 				{ Highlights.TOOL_TITLE, "README.md" },
 				{ Highlights.TOOL_BODY_INLINE, "56 lines" },
 			}, segments(display))
@@ -148,7 +148,7 @@ describe("ui.chat.tools", function()
 
 			assert.are.same({
 				{ Highlights.TOOL_ICON_SUCCESS, icons.success },
-				{ Highlights.TOOL, "bash" },
+				{ Highlights.TOOL, "bash:" },
 				{ Highlights.TOOL_TITLE, "ls" },
 				{ Highlights.TOOL_BODY, "  a" },
 				{ Highlights.TOOL_BODY, "  b" },
@@ -188,7 +188,7 @@ describe("ui.chat.tools", function()
 
 			local render = display:render()
 			assert.are.same({
-				icons.pending .. " eval run",
+				icons.pending .. " eval: run",
 				"  local a = 1",
 				'  local b = "two"',
 			}, render.lines)
@@ -206,9 +206,8 @@ describe("ui.chat.tools", function()
 			assert.is_true(body_lines[3])
 		end)
 
-		it("configures bash to render as shell code", function()
+		it("configures the bash title to render as shell code", function()
 			assert.are.equal("bash", Tools.spec("bash").title_lang)
-			assert.are.equal("bash", Tools.spec("bash").body_lang)
 		end)
 
 		it("falls back to the flat groups without a language", function()
@@ -221,7 +220,7 @@ describe("ui.chat.tools", function()
 
 			assert.are.same({
 				{ Highlights.TOOL_ICON_PENDING, icons.pending },
-				{ Highlights.TOOL, "thing" },
+				{ Highlights.TOOL, "thing:" },
 				{ Highlights.TOOL_TITLE, "plain" },
 				{ Highlights.TOOL_BODY, "  one" },
 			}, segments(display))
@@ -233,6 +232,59 @@ describe("ui.chat.tools", function()
 				return segment[1]
 			end, segments(display))
 			assert.is_truthy(vim.tbl_contains(groups, Highlights.TOOL_TITLE))
+		end)
+
+		it("gives the title line and each body line a background", function()
+			local display = Display.new("bash", Tools.spec("bash"), { command = "ls" })
+			display:update({ type = "tool_execution_end", result = result("a\nb") })
+
+			assert.are.same({
+				Highlights.TOOL_BACKGROUND,
+				Highlights.TOOL_BODY_BACKGROUND,
+				Highlights.TOOL_BODY_BACKGROUND,
+			}, display:render().line_highlights)
+		end)
+
+		it("gives an inline tool a single background line", function()
+			local display = Display.new("read", Tools.spec("read"), { path = "x" })
+			display:update({ type = "tool_execution_end", result = result("a\nb") })
+
+			assert.are.same({ Highlights.TOOL_BACKGROUND }, display:render().line_highlights)
+		end)
+
+		it("keeps backgrounds in sync when a block shrinks", function()
+			local out = Output.new()
+			local tools = Tools.new()
+			local ns = vim.api.nvim_get_namespaces()["crust.chat.output.highlights"]
+
+			tools:render(out, {
+				type = "tool_execution_start",
+				toolCallId = "1",
+				toolName = "bash",
+				args = { command = "ls" },
+			})
+			tools:render(out, {
+				type = "tool_execution_update",
+				toolCallId = "1",
+				toolName = "bash",
+				partialResult = result("a\nb\nc"),
+			})
+			tools:render(out, {
+				type = "tool_execution_end",
+				toolCallId = "1",
+				toolName = "bash",
+				result = result("a"),
+			})
+
+			local rows = {}
+			for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(out:buf(), ns, 0, -1, { details = true })) do
+				if mark[4].line_hl_group then
+					rows[#rows + 1] = mark[2]
+				end
+			end
+
+			-- Two lines left, and no mark stranded past the block.
+			assert.are.same({ 0, 1 }, rows)
 		end)
 
 		it("uses a status-specific icon group", function()
@@ -260,9 +312,16 @@ describe("ui.chat.tools", function()
 
 			local ns = vim.api.nvim_get_namespaces()["crust.chat.output.highlights"]
 			local marks = vim.api.nvim_buf_get_extmarks(out:buf(), ns, 0, -1, { details = true })
-			local groups = vim.tbl_map(function(mark)
-				return mark[4].hl_group
-			end, marks)
+			local line_groups = {}
+			local groups = {}
+			for _, mark in ipairs(marks) do
+				if mark[4].line_hl_group then
+					line_groups[#line_groups + 1] = mark[4].line_hl_group
+				else
+					groups[#groups + 1] = mark[4].hl_group
+				end
+			end
+			assert.are.same({ Highlights.TOOL_BACKGROUND }, line_groups)
 
 			-- Exactly one set of marks: the pending render must not linger.
 			assert.are.same({
@@ -316,13 +375,13 @@ describe("ui.chat.tools", function()
 			assert.are.equal("/tmp/x.lua", display:title())
 			display:update({ type = "tool_execution_end", result = result("a\nb\nc") })
 			assert.are.same({ "3 lines" }, display:body())
-			assert.are.same({ icons.success .. " read /tmp/x.lua 3 lines" }, display:lines())
+			assert.are.same({ icons.success .. " read: /tmp/x.lua 3 lines" }, display:lines())
 		end)
 
 		it("keeps bash multi-line", function()
 			local display = Display.new("bash", Tools.spec("bash"), { command = "ls" })
 			display:update({ type = "tool_execution_end", result = result("a\nb") })
-			assert.are.same({ icons.success .. " bash ls", "  a", "  b" }, display:lines())
+			assert.are.same({ icons.success .. " bash: ls", "  a", "  b" }, display:lines())
 		end)
 
 		it("registers a custom spec", function()
@@ -357,7 +416,7 @@ describe("ui.chat.tools", function()
 				toolName = "bash",
 				args = { command = "sleep 2" },
 			})
-			assert.are.same({ icons.pending .. " bash sleep 2", "", "" }, out:lines())
+			assert.are.same({ icons.pending .. " bash: sleep 2", "", "" }, out:lines())
 
 			tools:render(out, {
 				type = "tool_execution_update",
@@ -372,7 +431,7 @@ describe("ui.chat.tools", function()
 				result = result("hi"),
 			})
 
-			assert.are.same({ icons.success .. " bash sleep 2", "  hi", "", "" }, out:lines())
+			assert.are.same({ icons.success .. " bash: sleep 2", "  hi", "", "" }, out:lines())
 		end)
 
 		it("keeps assistant text streamed between tool events out of the block", function()
@@ -391,7 +450,7 @@ describe("ui.chat.tools", function()
 			})
 
 			assert.are.same({
-				icons.success .. " bash ls",
+				icons.success .. " bash: ls",
 				"  done",
 				"",
 				"thinking…",
@@ -404,10 +463,10 @@ describe("ui.chat.tools", function()
 			tools:render(out, { type = "tool_execution_end", toolCallId = "a", toolName = "bash", result = result("1") })
 
 			assert.are.same({
-				icons.success .. " bash one",
+				icons.success .. " bash: one",
 				"  1",
 				"",
-				icons.pending .. " bash two",
+				icons.pending .. " bash: two",
 				"",
 				"",
 			}, out:lines())
@@ -423,7 +482,7 @@ describe("ui.chat.tools", function()
 				result = result("no such file"),
 			})
 
-			assert.are.same({ icons.error .. " read x no such file", "", "" }, out:lines())
+			assert.are.same({ icons.error .. " read: x no such file", "", "" }, out:lines())
 		end)
 
 		it("ignores events without a tool call id", function()

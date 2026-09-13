@@ -8,7 +8,7 @@
 ---   body_lang   string   treesitter language for the body
 ---
 --- A rendered call is three highlighted segments:
----   <icon> <name: CrustTool> <title: CrustToolTitle> <body: CrustToolBodyInline>
+---   <icon> <name: CrustTool>: <title: CrustToolTitle> <body: CrustToolBodyInline>
 --- or, when not inline, body lines below it highlighted as CrustToolBody.
 ---
 --- Per-tool specs live next to this file (see `crust.ui.chat.tools`).
@@ -44,6 +44,7 @@ local Syntax = require("crust.ui.syntax")
 ---@class Crust.Chat.Tools.Render
 ---@field lines string[]
 ---@field highlights Crust.Chat.Tools.Highlight[]
+---@field line_highlights table<integer, string> full-line background per line
 
 ---@type table<Crust.Chat.Tools.Status, string>
 local FALLBACK_ICONS = {
@@ -188,6 +189,8 @@ function Display:render()
 	}
 
 	if title ~= "" then
+		head = head .. ":"
+		highlights[#highlights].end_col = #head
 		local col = #head + 1
 		head = head .. " " .. title
 		local syntax = syntax_highlights(title, self.spec.title_lang, 1, col)
@@ -199,6 +202,7 @@ function Display:render()
 	end
 
 	local lines = { head }
+	local line_highlights = { Highlights.TOOL_BACKGROUND }
 
 	if self:is_inline() then
 		if #body > 0 then
@@ -213,12 +217,13 @@ function Display:render()
 					{ line = 1, col = col, end_col = #lines[1], group = Highlights.TOOL_BODY_INLINE }
 			end
 		end
-		return { lines = lines, highlights = highlights }
+		return { lines = lines, highlights = highlights, line_highlights = line_highlights }
 	end
 
 	local body_line = #lines + 1
 	for _, line in ipairs(body) do
 		lines[#lines + 1] = "  " .. line
+		line_highlights[#lines] = Highlights.TOOL_BODY_BACKGROUND
 	end
 
 	local syntax = #body > 0 and syntax_highlights(table.concat(body, "\n"), self.spec.body_lang, body_line, 2)
@@ -231,7 +236,7 @@ function Display:render()
 		end
 	end
 
-	return { lines = lines, highlights = highlights }
+	return { lines = lines, highlights = highlights, line_highlights = line_highlights }
 end
 
 --- Rendered lines without highlight information.

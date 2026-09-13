@@ -102,9 +102,9 @@ function Tools:render(output, event)
 	local render = display:render()
 	local block = self._blocks[id]
 	if block then
-		output:replace_block(block, render.lines, render.highlights)
+		output:replace_block(block, render.lines, render.highlights, render.line_highlights)
 	else
-		self._blocks[id] = output:append_block(render.lines, render.highlights)
+		self._blocks[id] = output:append_block(render.lines, render.highlights, render.line_highlights)
 	end
 end
 

@@ -12,6 +12,8 @@ M.TOOL = "CrustTool"
 M.TOOL_TITLE = "CrustToolTitle"
 M.TOOL_BODY = "CrustToolBody"
 M.TOOL_BODY_INLINE = "CrustToolBodyInline"
+M.TOOL_BACKGROUND = "CrustToolBackground"
+M.TOOL_BODY_BACKGROUND = "CrustToolBodyBackground"
 M.TOOL_ICON_PENDING = "CrustToolIconPending"
 M.TOOL_ICON_SUCCESS = "CrustToolIconSuccess"
 M.TOOL_ICON_ERROR = "CrustToolIconError"
@@ -26,6 +28,10 @@ M.groups = {
 	[M.TOOL_TITLE] = { link = "Directory" },
 	[M.TOOL_BODY] = { link = "Comment" },
 	[M.TOOL_BODY_INLINE] = { link = "Comment" },
+	-- Full-line backgrounds, applied with line_hl_group. Link them to
+	-- "Normal" to turn the shading off.
+	[M.TOOL_BACKGROUND] = { link = "CursorLine" },
+	[M.TOOL_BODY_BACKGROUND] = { link = "CursorLine" },
 	[M.TOOL_ICON_PENDING] = { link = "DiagnosticWarn" },
 	[M.TOOL_ICON_SUCCESS] = { link = "DiagnosticOk" },
 	[M.TOOL_ICON_ERROR] = { link = "DiagnosticError" },
