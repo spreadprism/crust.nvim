@@ -7,6 +7,7 @@ local Output = {}
 Output.__index = Output
 
 Output.FILETYPE = require("crust.filetypes").output
+Output.SEPARATOR = "---"
 
 local scratch = require("crust.ui.scratch")
 local Highlights = require("crust.ui.highlights")
@@ -190,13 +191,39 @@ function Output:replace_block(block, lines, highlights)
 	self:follow()
 end
 
---- Append a message header: role icon plus a timestamp, like pi.nvim.
+--- Highlight a range on an absolute row.
+---@private
+---@param row integer 0-based
+---@param col integer
+---@param end_col integer
+---@param group string
+function Output:_highlight(row, col, end_col, group)
+	vim.api.nvim_buf_set_extmark(self._buf, hl_ns, row, col, { end_col = end_col, hl_group = group })
+end
+
+--- Start a message: a `---` rule, then the role icon and a timestamp.
+--- The rule is skipped for the first message, there is nothing to separate.
 ---@param label string role icon, see `config.labels`
+---@param group string highlight group for the icon
 ---@param timestamp? integer epoch seconds, defaults to now
-function Output:header(label, timestamp)
+function Output:header(label, group, timestamp)
 	local format = require("crust.config").get().timestamp_format
 	local time = tostring(os.date(format, timestamp or os.time()))
-	self:append("\n## " .. label .. " " .. time .. "\n\n")
+
+	local has_content = self:_trim_trailing_blanks()
+	local head = label .. " " .. time
+	if has_content then
+		self:append("\n\n" .. Output.SEPARATOR .. "\n" .. head .. "\n\n")
+	else
+		self:append(head .. "\n\n")
+	end
+
+	local head_row = vim.api.nvim_buf_line_count(self._buf) - 3
+	if has_content then
+		self:_highlight(head_row - 1, 0, #Output.SEPARATOR, Highlights.SEPARATOR)
+	end
+	self:_highlight(head_row, 0, #label, group)
+	self:_highlight(head_row, #label + 1, #head, Highlights.TIMESTAMP)
 end
 
 ---@param message string

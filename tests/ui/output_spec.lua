@@ -1,4 +1,5 @@
 local Output = require("crust.ui.chat.output")
+local Highlights = require("crust.ui.highlights")
 
 describe("ui.chat.output", function()
 	---@type Crust.Chat.Output
@@ -104,16 +105,61 @@ describe("ui.chat.output", function()
 	end)
 
 	describe("helpers", function()
-		it("writes a header with the role icon and a timestamp", function()
+		it("omits the rule for the first message", function()
 			local at = os.time({ year = 2024, month = 3, day = 7, hour = 9, min = 5 })
-			out:header("󰚩", at)
-			assert.are.same({ "", "## 󰚩 Mar 7 2024, 09:05", "", "" }, out:lines())
+			out:header("󰚩", Highlights.AGENT_TITLE, at)
+			assert.are.same({ "󰚩 Mar 7 2024, 09:05", "", "" }, out:lines())
+		end)
+
+		it("separates later messages with a rule instead of a markdown header", function()
+			local at = os.time({ year = 2024, month = 3, day = 7, hour = 9, min = 5 })
+			out:header("󰚩", Highlights.AGENT_TITLE, at)
+			out:append("hi")
+			out:header("󰚩", Highlights.AGENT_TITLE, at)
+			assert.are.same({
+				"󰚩 Mar 7 2024, 09:05",
+				"",
+				"hi",
+				"",
+				"---",
+				"󰚩 Mar 7 2024, 09:05",
+				"",
+				"",
+			}, out:lines())
 		end)
 
 		it("defaults the header timestamp to now", function()
-			out:header("󰚩")
+			out:header("󰚩", Highlights.AGENT_TITLE)
 			local expected = tostring(os.date(require("crust.config").get().timestamp_format))
-			assert.are.equal("## 󰚩 " .. expected, out:lines()[2])
+			assert.are.equal("󰚩 " .. expected, out:lines()[1])
+		end)
+
+		it("keeps exactly one blank line before the rule", function()
+			out:append("text\n\n\n")
+			out:header("󰚩", Highlights.AGENT_TITLE)
+			assert.are.same({ "text", "", "---" }, vim.list_slice(out:lines(), 1, 3))
+		end)
+
+		it("highlights the rule, the role icon and the timestamp", function()
+			local at = os.time({ year = 2024, month = 3, day = 7, hour = 9, min = 5 })
+			out:header("󰚩", Highlights.AGENT_TITLE, at)
+			out:append("hi")
+			out:header("󰚩", Highlights.AGENT_TITLE, at)
+
+			local ns = vim.api.nvim_get_namespaces()["crust.chat.output.highlights"]
+			local marks = vim.api.nvim_buf_get_extmarks(out:buf(), ns, 0, -1, { details = true })
+			local got = vim.tbl_map(function(mark)
+				local line = vim.api.nvim_buf_get_lines(out:buf(), mark[2], mark[2] + 1, false)[1]
+				return { mark[4].hl_group, line:sub(mark[3] + 1, mark[4].end_col) }
+			end, marks)
+
+			assert.are.same({
+				{ Highlights.AGENT_TITLE, "󰚩" },
+				{ Highlights.TIMESTAMP, "Mar 7 2024, 09:05" },
+				{ Highlights.SEPARATOR, "---" },
+				{ Highlights.AGENT_TITLE, "󰚩" },
+				{ Highlights.TIMESTAMP, "Mar 7 2024, 09:05" },
+			}, got)
 		end)
 
 		it("writes errors in bold", function()

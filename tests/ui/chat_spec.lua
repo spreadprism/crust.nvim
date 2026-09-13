@@ -23,7 +23,7 @@ describe("ui.chat", function()
 	---@param label string
 	---@return string
 	local function header(label)
-		return "## " .. label .. " " .. tostring(os.date(config.get().timestamp_format))
+		return label .. " " .. tostring(os.date(config.get().timestamp_format))
 	end
 
 	---@param events Crust.Pi.Event[]
@@ -44,6 +44,71 @@ describe("ui.chat", function()
 		assert.is_false(chat:is_visible())
 	end)
 
+	describe("windows", function()
+		before_each(function()
+			chat._pi = {
+				connect = function()
+					return true
+				end,
+				is_running = function()
+					return true
+				end,
+				send = function()
+					return "id"
+				end,
+				close = function() end,
+			}
+			chat:open()
+		end)
+
+		after_each(function()
+			chat:close()
+		end)
+
+		it("opens both windows", function()
+			assert.is_not_nil(chat:output():win())
+			assert.is_not_nil(chat:input():win())
+			assert.is_true(chat:is_visible())
+		end)
+
+		it("closes the input when the output window is closed", function()
+			vim.api.nvim_win_close(chat:output():win(), false)
+			vim.wait(100, function()
+				return chat:input():win() == nil
+			end)
+			assert.is_nil(chat:input():win())
+			assert.is_false(chat:is_visible())
+		end)
+
+		it("closes the output when the input window is closed", function()
+			vim.api.nvim_win_close(chat:input():win(), false)
+			vim.wait(100, function()
+				return chat:output():win() == nil
+			end)
+			assert.is_nil(chat:output():win())
+			assert.is_false(chat:is_visible())
+		end)
+
+		it("ignores unrelated windows closing", function()
+			vim.cmd("topleft split")
+			local other = vim.api.nvim_get_current_win()
+			vim.api.nvim_win_close(other, false)
+			vim.wait(50)
+			assert.is_true(chat:is_visible())
+		end)
+
+		it("reopens after both windows are gone", function()
+			vim.api.nvim_win_close(chat:input():win(), false)
+			vim.wait(100, function()
+				return not chat:is_visible()
+			end)
+
+			chat:open()
+			assert.is_true(chat:is_visible())
+			assert.is_not_nil(chat:input():win())
+		end)
+	end)
+
 	describe("events", function()
 		it("renders a full assistant turn", function()
 			feed({
@@ -53,7 +118,7 @@ describe("ui.chat", function()
 				{ type = "agent_end" },
 			})
 
-			assert.are.same({ "", header(labels.agent), "", "Hello", "" }, chat:output():lines())
+			assert.are.same({ header(labels.agent), "", "Hello", "" }, chat:output():lines())
 		end)
 
 		it("ignores non-text assistant events", function()
@@ -63,7 +128,7 @@ describe("ui.chat", function()
 				{ type = "message_update", assistantMessageEvent = { type = "text_delta", delta = "hi" } },
 			})
 
-			assert.are.equal("hi", chat:output():lines()[4])
+			assert.are.equal("hi", chat:output():lines()[3])
 		end)
 
 		it("tracks streaming state", function()
@@ -86,7 +151,6 @@ describe("ui.chat", function()
 			})
 
 			assert.are.same({
-				"",
 				header(labels.agent),
 				"",
 				"Running.",
@@ -140,7 +204,7 @@ describe("ui.chat", function()
 			chat:input():set_text("hello there")
 			chat:submit()
 
-			assert.are.same({ "", header(labels.user), "", "hello there", "" }, chat:output():lines())
+			assert.are.same({ header(labels.user), "", "hello there", "" }, chat:output():lines())
 			assert.are.equal("", chat:input():text())
 			assert.are.equal("prompt", sent.type)
 			assert.are.equal("hello there", sent.message)

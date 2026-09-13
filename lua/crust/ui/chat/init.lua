@@ -6,14 +6,19 @@
 ---@field private _output Crust.Chat.Output
 ---@field private _tools Crust.Chat.Tools
 ---@field private _streaming boolean
+---@field private _augroup integer?
+---@field private _closing boolean
 local Chat = {}
 Chat.__index = Chat
+
+local next_id = 0
 
 local Pi = require("crust.pi.client")
 local Command = require("crust.pi.rpc")
 local Input = require("crust.ui.chat.input")
 local Output = require("crust.ui.chat.output")
 local Tools = require("crust.ui.chat.tools")
+local Highlights = require("crust.ui.highlights")
 
 local WIDTH_RATIO = 0.4
 
@@ -22,6 +27,9 @@ local WIDTH_RATIO = 0.4
 function Chat.new(opts)
 	local self = setmetatable({}, Chat)
 
+	next_id = next_id + 1
+	self._id = next_id
+	self._closing = false
 	self._streaming = false
 	self._output = Output.new()
 	self._tools = Tools.new()
@@ -73,6 +81,7 @@ function Chat:open()
 
 	self._output:open(math.floor(vim.o.columns * WIDTH_RATIO))
 	self._input:open()
+	self:_watch_windows()
 
 	local ok, err = self._pi:connect()
 	if not ok then
@@ -82,9 +91,41 @@ function Chat:open()
 	self._input:focus()
 end
 
+--- Closing one panel closes the other: the two windows are one unit.
+---@private
+function Chat:_watch_windows()
+	local watched = { [self._output:win()] = true, [self._input:win()] = true }
+
+	self._augroup = vim.api.nvim_create_augroup("crust.chat." .. self._id, { clear = true })
+	vim.api.nvim_create_autocmd("WinClosed", {
+		group = self._augroup,
+		callback = function(event)
+			if not watched[tonumber(event.match)] then
+				return
+			end
+			-- WinClosed fires before the window is gone, so close the sibling
+			-- once neovim is done tearing this one down.
+			vim.schedule(function()
+				self:close()
+			end)
+		end,
+	})
+end
+
 function Chat:close()
+	if self._closing then
+		return
+	end
+	self._closing = true
+
+	if self._augroup then
+		pcall(vim.api.nvim_del_augroup_by_id, self._augroup)
+		self._augroup = nil
+	end
+
 	self._input:close()
 	self._output:close()
+	self._closing = false
 end
 
 function Chat:toggle()
@@ -116,7 +157,7 @@ function Chat:_send(text)
 	end
 
 	self._input:clear()
-	self._output:header(require("crust.config").get().labels.user)
+	self._output:header(require("crust.config").get().labels.user, Highlights.USER_TITLE)
 	self._output:append(text .. "\n")
 
 	local _, err = self._pi:send(
@@ -141,7 +182,7 @@ end
 function Chat:_on_event(event)
 	if event.type == "agent_start" then
 		self._streaming = true
-		self._output:header(require("crust.config").get().labels.agent)
+		self._output:header(require("crust.config").get().labels.agent, Highlights.AGENT_TITLE)
 	elseif event.type == "agent_end" then
 		self._streaming = false
 		self._output:append("\n")

@@ -4,6 +4,10 @@
 ---@class Crust.Highlights
 local M = {}
 
+M.SEPARATOR = "CrustSeparator"
+M.USER_TITLE = "CrustUserTitle"
+M.AGENT_TITLE = "CrustAgentTitle"
+M.TIMESTAMP = "CrustTimestamp"
 M.TOOL = "CrustTool"
 M.TOOL_TITLE = "CrustToolTitle"
 M.TOOL_BODY = "CrustToolBody"
@@ -14,6 +18,10 @@ M.TOOL_ICON_ERROR = "CrustToolIconError"
 
 ---@type table<string, vim.api.keyset.highlight>
 M.groups = {
+	[M.SEPARATOR] = { link = "WinSeparator" },
+	[M.USER_TITLE] = { link = "Identifier" },
+	[M.AGENT_TITLE] = { link = "Special" },
+	[M.TIMESTAMP] = { link = "Comment" },
 	[M.TOOL] = { link = "Function" },
 	[M.TOOL_TITLE] = { link = "Directory" },
 	[M.TOOL_BODY] = { link = "Comment" },
