@@ -99,6 +99,7 @@ function Chat:open()
 	self._output:open(math.floor(vim.o.columns * WIDTH_RATIO))
 	self._input:open()
 	self:_watch_windows()
+	self._status:render()
 
 	local ok, err = self._pi:connect()
 	if not ok then
@@ -246,12 +247,9 @@ function Chat:_on_event(event)
 		local ev = event.assistantMessageEvent
 		if ev and ev.type == "text_delta" and ev.delta then
 			self._output:append(ev.delta)
-			-- The status sits on the last line, which just moved.
-			self._status:render()
 		end
 	elseif Tools.handles(event.type) then
 		self._tools:render(self._output, event)
-		self._status:render()
 	elseif event.type == "_stderr" then
 		self._output:error(tostring(event.message))
 	elseif event.type == "_process_exit" then

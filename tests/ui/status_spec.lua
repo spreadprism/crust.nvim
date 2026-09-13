@@ -3,24 +3,11 @@ local Output = require("crust.ui.chat.output")
 local Highlights = require("crust.ui.highlights")
 local config = require("crust.config")
 
-local ns = vim.api.nvim_create_namespace("crust.chat.status")
-
---- Virtual lines of the status extmark, flattened to strings.
----@param output Crust.Chat.Output
----@return string[]
-local function virt_lines(output)
-	local marks = vim.api.nvim_buf_get_extmarks(output:buf(), ns, 0, -1, { details = true })
-	local lines = {}
-	for _, mark in ipairs(marks) do
-		for _, virt in ipairs(mark[4].virt_lines or {}) do
-			local text = ""
-			for _, chunk in ipairs(virt) do
-				text = text .. chunk[1]
-			end
-			lines[#lines + 1] = text
-		end
-	end
-	return lines
+--- Statusline with the highlight groups stripped, as it reads on screen.
+---@param status Crust.Chat.Status
+---@return string
+local function rendered(status)
+	return (status:statusline():gsub("%%#[%w_]+#", ""))
 end
 
 describe("ui.chat.status", function()
@@ -38,6 +25,7 @@ describe("ui.chat.status", function()
 
 	after_each(function()
 		status:close()
+		out:close()
 	end)
 
 	describe("spinner", function()
@@ -64,10 +52,10 @@ describe("ui.chat.status", function()
 	end)
 
 	describe("set", function()
-		it("starts hidden", function()
+		it("starts empty", function()
 			assert.is_nil(status:text())
 			assert.is_false(status:is_running())
-			assert.are.same({}, virt_lines(out))
+			assert.are.equal("", status:statusline())
 		end)
 
 		it("shows the text with a spinner frame", function()
@@ -77,7 +65,7 @@ describe("ui.chat.status", function()
 			status:set("Thinking…")
 			assert.is_true(status:is_running())
 			assert.are.equal("X  Thinking…", status:line())
-			assert.are.same({ "", "X  Thinking…  <C-c> to cancel", "" }, virt_lines(out))
+			assert.are.equal(" X  Thinking…%=<C-c> to cancel ", rendered(status))
 		end)
 
 		it("shows the icon alone when the text is empty", function()
@@ -85,9 +73,8 @@ describe("ui.chat.status", function()
 			config.config = nil
 
 			status:set("")
-			assert.is_true(status:is_running())
 			assert.are.equal("X", status:line())
-			assert.are.same({ "", "X  <C-c> to cancel", "" }, virt_lines(out))
+			assert.are.equal(" X%=<C-c> to cancel ", rendered(status))
 		end)
 
 		it("defaults to no status text", function()
@@ -106,13 +93,13 @@ describe("ui.chat.status", function()
 			assert.are.equal("B  busy", status:line())
 		end)
 
-		it("clears the extmark and stops the timer", function()
+		it("clears the bar and stops the timer", function()
 			status:set("busy")
 			status:clear()
 
 			assert.is_nil(status:text())
 			assert.is_false(status:is_running())
-			assert.are.same({}, virt_lines(out))
+			assert.are.equal("", status:statusline())
 		end)
 
 		it("ignores setting the same text twice", function()
@@ -124,82 +111,82 @@ describe("ui.chat.status", function()
 				return status:line() ~= "A  busy"
 			end)
 			status:set("busy")
-			-- The frame is not reset, the status simply keeps running.
 			assert.are.equal("B  busy", status:line())
 		end)
 
-		it("does not write to the buffer", function()
+		it("never writes to the output buffer", function()
 			status:set("busy")
 			assert.are.same({ "" }, out:lines())
 		end)
 	end)
 
-	describe("render", function()
-		it("follows the last line of the buffer", function()
-			status:set("busy")
-			out:append("one\ntwo\n")
-			status:render()
-
-			local marks = vim.api.nvim_buf_get_extmarks(out:buf(), ns, 0, -1, {})
-			assert.are.equal(vim.api.nvim_buf_line_count(out:buf()) - 1, marks[1][2])
-		end)
-
-		it("keeps a single extmark across renders", function()
-			status:set("busy")
-			status:render()
-			status:render()
-			assert.are.equal(1, #vim.api.nvim_buf_get_extmarks(out:buf(), ns, 0, -1, {}))
-		end)
-
-		it("centers the text in the output window", function()
+	describe("statusline", function()
+		it("is set on the output window", function()
 			out:open(40)
 			status:set("busy")
 
-			local line = virt_lines(out)[2]
-			local pad = #line:match("^ *")
-			assert.is_true(pad > 0)
-			assert.is_true(vim.fn.strdisplaywidth(line) <= out:width())
-			out:close()
+			assert.are.equal(status:statusline(), vim.wo[out:win()].statusline)
+		end)
+
+		it("is restored when the status clears", function()
+			out:open(40)
+			status:set("busy")
+			status:clear()
+
+			-- Empty means "fall back to the global statusline".
+			assert.are.equal(vim.go.statusline, vim.wo[out:win()].statusline)
+		end)
+
+		it("splits left and right with %=", function()
+			status:set("busy")
+
+			local left, right = status:statusline():match("^(.*)%%=(.*)$")
+			assert.is_truthy(left:find("busy", 1, true))
+			assert.is_truthy(right:find("<C-c> to cancel", 1, true))
 		end)
 
 		it("highlights the icon, text, elapsed time and hint apart", function()
 			status:set("busy")
+			status._started_at = math.floor(vim.uv.hrtime() / 1e9) - 5
 
-			local mark = vim.api.nvim_buf_get_extmarks(out:buf(), ns, 0, -1, { details = true })[1]
-			local chunks = mark[4].virt_lines[2]
-			assert.are.equal(Highlights.STATUS_ICON, chunks[1][2])
-			assert.are.equal(Highlights.STATUS, chunks[2][2])
-			assert.are.equal("  busy", chunks[2][1])
-			assert.are.equal(Highlights.STATUS_TIME, chunks[3][2])
-			assert.are.equal(Highlights.STATUS_HINT, chunks[4][2])
+			local line = status:statusline()
+			assert.is_truthy(line:find("%#" .. Highlights.STATUS_ICON .. "#", 1, true))
+			assert.is_truthy(line:find("%#" .. Highlights.STATUS .. "#  busy", 1, true))
+			assert.is_truthy(line:find("%#" .. Highlights.STATUS_TIME .. "#", 1, true))
+			assert.is_truthy(line:find("%#" .. Highlights.STATUS_HINT .. "#<C-c> to cancel", 1, true))
 		end)
 
 		it("names the status groups after the output panel", function()
 			assert.are.equal("CrustOutputStatus", Highlights.STATUS)
 			assert.are.equal("CrustOutputStatusIcon", Highlights.STATUS_ICON)
 		end)
+
+		it("does not fail when the output window is hidden", function()
+			assert.has_no.errors(function()
+				status:set("busy")
+			end)
+		end)
 	end)
 
 	describe("hint", function()
 		it("shows the configured cancel key", function()
-			assert.are.equal("  <C-c> to cancel", status:hint())
+			assert.are.equal("<C-c> to cancel", status:hint())
 		end)
 
 		it("follows a custom key", function()
 			config.options = { keymaps = { cancel = "<Esc>" } }
 			config.config = nil
-			assert.are.equal("  <Esc> to cancel", status:hint())
+			assert.are.equal("<Esc> to cancel", status:hint())
 		end)
 
 		it("is empty when cancelling is unbound", function()
 			config.options = { keymaps = { cancel = false } }
 			config.config = nil
-			assert.are.equal("", status:hint())
-		end)
 
-		it("appears next to the status text", function()
 			status:set("busy")
-			assert.is_truthy(virt_lines(out)[2]:find("<C-c> to cancel", 1, true))
+			assert.are.equal("", status:hint())
+			assert.is_falsy(rendered(status):find("to cancel", 1, true))
+			assert.are.equal("%=", rendered(status):sub(-2))
 		end)
 	end)
 

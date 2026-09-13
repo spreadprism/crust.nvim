@@ -1,8 +1,7 @@
---- Busy status rendered under the last line of the output buffer.
+--- Status bar: the output window's own statusline.
 ---
---- Like pi.nvim, this is a `virt_lines` extmark on the last line, not real
---- buffer text: nothing has to be deleted when the agent stops, and the
---- transcript stays clean. A uv timer advances the spinner frame.
+--- Left side is the spinner and the elapsed time, right side is the cancel
+--- hint. Nothing is written to the buffer and no extra window is created.
 
 ---@class Crust.Chat.Status
 ---@field private _output Crust.Chat.Output
@@ -12,13 +11,10 @@
 ---@field private _index integer
 ---@field private _timer uv.uv_timer_t?
 ---@field private _started_at integer? seconds
----@field private _extmark integer?
 local Status = {}
 Status.__index = Status
 
 local Highlights = require("crust.ui.highlights")
-
-local ns = vim.api.nvim_create_namespace("crust.chat.status")
 
 ---@class Crust.Spinner
 ---@field refresh_rate integer ms between frames
@@ -78,7 +74,6 @@ function Status.new(output)
 	self._text = nil
 	self._index = 1
 	self._timer = nil
-	self._extmark = nil
 	self:_pick_spinner()
 	return self
 end
@@ -100,7 +95,7 @@ function Status:is_running()
 	return self._timer ~= nil
 end
 
---- Show `text` with a spinner, or clear the status when `text` is nil.
+--- Show `text` with a spinner, or clear the bar when `text` is nil.
 ---@param text string?
 function Status:set(text)
 	if text == self._text then
@@ -163,8 +158,7 @@ function Status:elapsed()
 	return ""
 end
 
---- Spinner frame plus text, as it appears in the buffer. The text is
---- optional, an empty one leaves just the animated icon.
+--- Left side: spinner frame, then the optional status text.
 ---@return string
 function Status:line()
 	if not self._text then
@@ -177,65 +171,54 @@ function Status:line()
 	return frame .. "  " .. self._text
 end
 
---- "<C-c> to cancel", empty when no cancel key is bound.
+--- Right side: "<C-c> to cancel", empty when no cancel key is bound.
 ---@return string
 function Status:hint()
 	local key = require("crust.config").get().keymaps.cancel
 	if not key or key == "" then
 		return ""
 	end
-	return "  " .. key .. " to cancel"
+	return key .. " to cancel"
 end
 
---- Draw, move, or remove the status extmark.
-function Status:render()
-	local buf = self._output:buf()
-	if not vim.api.nvim_buf_is_valid(buf) then
-		return
-	end
-
-	if self._extmark then
-		vim.api.nvim_buf_del_extmark(buf, ns, self._extmark)
-		self._extmark = nil
-	end
-
+--- The 'statusline' value for the output window. Empty when idle.
+---@return string
+function Status:statusline()
 	if not self._text then
+		return ""
+	end
+
+	local left = "%#" .. Highlights.STATUS_ICON .. "# " .. self._frames[self._index]
+	if self._text ~= "" then
+		left = left .. "%#" .. Highlights.STATUS .. "#  " .. self._text
+	end
+	left = left .. "%#" .. Highlights.STATUS_TIME .. "#" .. self:elapsed()
+
+	local hint = self:hint()
+	local right = hint ~= "" and ("%#" .. Highlights.STATUS_HINT .. "#" .. hint .. " ") or ""
+
+	return left .. "%#" .. Highlights.STATUS .. "#%=" .. right
+end
+
+--- Push the statusline onto the output window.
+function Status:render()
+	local win = self._output:win()
+	if not win then
 		return
 	end
 
-	local icon = self._frames[self._index]
-	local text = self._text ~= "" and ("  " .. self._text) or ""
-	local elapsed = self:elapsed()
-	local hint = self:hint()
-
-	-- Centered on the output window, like pi.nvim.
-	local width = self._output:width()
-	local pad = 0
-	if width then
-		pad = math.max(0, math.floor((width - vim.fn.strdisplaywidth(icon .. text .. elapsed .. hint)) / 2))
-	end
-
-	local last_line = vim.api.nvim_buf_line_count(buf) - 1
-	self._extmark = vim.api.nvim_buf_set_extmark(buf, ns, last_line, 0, {
-		virt_lines = {
-			{ { "" } },
-			{
-				{ string.rep(" ", pad) .. icon, Highlights.STATUS_ICON },
-				{ text, Highlights.STATUS },
-				{ elapsed, Highlights.STATUS_TIME },
-				{ hint, Highlights.STATUS_HINT },
-			},
-			{ { "" } },
-		},
-	})
-
-	self._output:follow()
+	vim.wo[win].statusline = self:statusline()
+	vim.cmd("redrawstatus")
 end
 
 function Status:close()
 	self:_stop_timer()
 	self._text = nil
-	self:render()
+
+	local win = self._output:win()
+	if win then
+		vim.wo[win].statusline = ""
+	end
 end
 
 return Status
