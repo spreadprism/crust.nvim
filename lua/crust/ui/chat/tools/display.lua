@@ -40,11 +40,15 @@ local Syntax = require("crust.ui.syntax")
 ---@field col integer byte offset, 0-based
 ---@field end_col integer byte offset, exclusive
 ---@field group string highlight group
+---@field priority? integer extmark priority, backgrounds sit below the text
 
 ---@class Crust.Chat.Tools.Render
 ---@field lines string[]
 ---@field highlights Crust.Chat.Tools.Highlight[]
 ---@field line_highlights table<integer, string> full-line background per line
+
+--- Backgrounds are drawn under the syntax highlights, which only set colors.
+local BACKGROUND_PRIORITY = 100
 
 ---@type table<Crust.Chat.Tools.Status, string>
 local FALLBACK_ICONS = {
@@ -175,6 +179,20 @@ local function syntax_highlights(text, lang, line, col)
 	return highlights
 end
 
+--- Add a background range under already collected text highlights.
+---@param highlights Crust.Chat.Tools.Highlight[]
+---@param line integer
+---@param col integer
+---@param end_col integer
+---@param group string
+local function background(highlights, line, col, end_col, group)
+	if end_col <= col then
+		return
+	end
+	highlights[#highlights + 1] =
+		{ line = line, col = col, end_col = end_col, group = group, priority = BACKGROUND_PRIORITY }
+end
+
 --- Lines plus their highlight ranges.
 ---@return Crust.Chat.Tools.Render
 function Display:render()
@@ -199,10 +217,13 @@ function Display:render()
 		else
 			highlights[#highlights + 1] = { line = 1, col = col, end_col = #head, group = Highlights.TOOL_TITLE }
 		end
+		-- Only the title text is shaded, not the icon and tool name.
+		background(highlights, 1, col, #head, Highlights.TOOL_BACKGROUND)
 	end
 
 	local lines = { head }
-	local line_highlights = { Highlights.TOOL_BACKGROUND }
+	---@type table<integer, string>
+	local line_highlights = {}
 
 	if self:is_inline() then
 		if #body > 0 then
@@ -216,6 +237,8 @@ function Display:render()
 				highlights[#highlights + 1] =
 					{ line = 1, col = col, end_col = #lines[1], group = Highlights.TOOL_BODY_INLINE }
 			end
+			-- Inline bodies share the title line, so only the text is shaded.
+			background(highlights, 1, col, #lines[1], Highlights.TOOL_BODY_BACKGROUND)
 		end
 		return { lines = lines, highlights = highlights, line_highlights = line_highlights }
 	end
@@ -223,6 +246,7 @@ function Display:render()
 	local body_line = #lines + 1
 	for _, line in ipairs(body) do
 		lines[#lines + 1] = "  " .. line
+		-- Tool output gets a full-width line background.
 		line_highlights[#lines] = Highlights.TOOL_BODY_BACKGROUND
 	end
 
@@ -232,7 +256,7 @@ function Display:render()
 	else
 		for index = body_line, #lines do
 			highlights[#highlights + 1] =
-				{ line = index, col = 0, end_col = #lines[index], group = Highlights.TOOL_BODY }
+				{ line = index, col = 2, end_col = #lines[index], group = Highlights.TOOL_BODY }
 		end
 	end
 

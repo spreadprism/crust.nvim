@@ -153,6 +153,7 @@ function Output:_highlight_block(first, count, highlights, line_highlights)
 		vim.api.nvim_buf_set_extmark(self._buf, hl_ns, first + hl.line - 1, hl.col, {
 			end_col = hl.end_col,
 			hl_group = hl.group,
+			priority = hl.priority,
 		})
 	end
 end

@@ -11,7 +11,9 @@ local function segments(display)
 	local render = display:render()
 	local out = {}
 	for _, hl in ipairs(render.highlights) do
-		out[#out + 1] = { hl.group, render.lines[hl.line]:sub(hl.col + 1, hl.end_col) }
+		if not hl.priority then
+			out[#out + 1] = { hl.group, render.lines[hl.line]:sub(hl.col + 1, hl.end_col) }
+		end
 	end
 	return out
 end
@@ -150,8 +152,8 @@ describe("ui.chat.tools", function()
 				{ Highlights.TOOL_ICON_SUCCESS, icons.success },
 				{ Highlights.TOOL, "bash:" },
 				{ Highlights.TOOL_TITLE, "ls" },
-				{ Highlights.TOOL_BODY, "  a" },
-				{ Highlights.TOOL_BODY, "  b" },
+				{ Highlights.TOOL_BODY, "a" },
+				{ Highlights.TOOL_BODY, "b" },
 			}, segments(display))
 		end)
 
@@ -222,7 +224,7 @@ describe("ui.chat.tools", function()
 				{ Highlights.TOOL_ICON_PENDING, icons.pending },
 				{ Highlights.TOOL, "thing:" },
 				{ Highlights.TOOL_TITLE, "plain" },
-				{ Highlights.TOOL_BODY, "  one" },
+				{ Highlights.TOOL_BODY, "one" },
 			}, segments(display))
 		end)
 
@@ -234,22 +236,63 @@ describe("ui.chat.tools", function()
 			assert.is_truthy(vim.tbl_contains(groups, Highlights.TOOL_TITLE))
 		end)
 
-		it("gives the title line and each body line a background", function()
-			local display = Display.new("bash", Tools.spec("bash"), { command = "ls" })
-			display:update({ type = "tool_execution_end", result = result("a\nb") })
+		--- Background segments only, as { group, text } pairs.
+		---@param display Crust.Chat.Tools.Display
+		local function backgrounds(display)
+			local render = display:render()
+			local out = {}
+			for _, hl in ipairs(render.highlights) do
+				if hl.priority then
+					out[#out + 1] = { hl.group, render.lines[hl.line]:sub(hl.col + 1, hl.end_col) }
+				end
+			end
+			return out
+		end
 
-			assert.are.same({
-				Highlights.TOOL_BACKGROUND,
-				Highlights.TOOL_BODY_BACKGROUND,
-				Highlights.TOOL_BODY_BACKGROUND,
-			}, display:render().line_highlights)
+		it("shades only the title text, not the icon or tool name", function()
+			local display = Display.new("bash", Tools.spec("bash"), { command = "echo foobar" })
+			display:update({ type = "tool_execution_end", result = result("foobar") })
+
+			assert.are.same({ { Highlights.TOOL_BACKGROUND, "echo foobar" } }, backgrounds(display))
 		end)
 
-		it("gives an inline tool a single background line", function()
+		it("gives output lines a full-width line background", function()
+			local display = Display.new("bash", Tools.spec("bash"), { command = "echo foobar" })
+			display:update({ type = "tool_execution_end", result = result("foo\nbar") })
+
+			local render = display:render()
+			assert.are.same({ "  foo", "  bar" }, { render.lines[2], render.lines[3] })
+			assert.are.same({
+				[2] = Highlights.TOOL_BODY_BACKGROUND,
+				[3] = Highlights.TOOL_BODY_BACKGROUND,
+			}, render.line_highlights)
+		end)
+
+		it("shades an inline body as a range, it shares the title line", function()
 			local display = Display.new("read", Tools.spec("read"), { path = "x" })
 			display:update({ type = "tool_execution_end", result = result("a\nb") })
 
-			assert.are.same({ Highlights.TOOL_BACKGROUND }, display:render().line_highlights)
+			assert.are.same({
+				{ Highlights.TOOL_BACKGROUND, "x" },
+				{ Highlights.TOOL_BODY_BACKGROUND, "2 lines" },
+			}, backgrounds(display))
+			assert.are.same({}, display:render().line_highlights)
+		end)
+
+		it("draws backgrounds below the text highlights", function()
+			local display = Display.new("bash", Tools.spec("bash"), { command = "echo hi" })
+			for _, hl in ipairs(display:render().highlights) do
+				if hl.group:find("Background", 1, true) then
+					assert.is_true(hl.priority < 4096)
+				else
+					assert.is_nil(hl.priority)
+				end
+			end
+		end)
+
+		it("adds no background when there is no title", function()
+			local display = Display.new("mystery", Tools.DEFAULT, {})
+			assert.are.same({}, backgrounds(display))
 		end)
 
 		it("keeps backgrounds in sync when a block shrinks", function()
@@ -278,12 +321,12 @@ describe("ui.chat.tools", function()
 
 			local rows = {}
 			for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(out:buf(), ns, 0, -1, { details = true })) do
-				if mark[4].line_hl_group then
+				if mark[4].line_hl_group or (mark[4].priority and mark[4].priority < 4096) then
 					rows[#rows + 1] = mark[2]
 				end
 			end
 
-			-- Two lines left, and no mark stranded past the block.
+			-- Title range plus one output line, nothing stranded past the block.
 			assert.are.same({ 0, 1 }, rows)
 		end)
 
@@ -312,16 +355,12 @@ describe("ui.chat.tools", function()
 
 			local ns = vim.api.nvim_get_namespaces()["crust.chat.output.highlights"]
 			local marks = vim.api.nvim_buf_get_extmarks(out:buf(), ns, 0, -1, { details = true })
-			local line_groups = {}
 			local groups = {}
 			for _, mark in ipairs(marks) do
-				if mark[4].line_hl_group then
-					line_groups[#line_groups + 1] = mark[4].line_hl_group
-				else
+				if not mark[4].line_hl_group and (not mark[4].priority or mark[4].priority >= 4096) then
 					groups[#groups + 1] = mark[4].hl_group
 				end
 			end
-			assert.are.same({ Highlights.TOOL_BACKGROUND }, line_groups)
 
 			-- Exactly one set of marks: the pending render must not linger.
 			assert.are.same({
