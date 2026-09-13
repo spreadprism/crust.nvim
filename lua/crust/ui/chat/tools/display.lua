@@ -22,7 +22,8 @@
 ---@field title_lang? string treesitter language used to highlight the title
 ---@field body_lang? string treesitter language used to highlight the body
 ---@field title_prefix? string written before the title, e.g. "> "
----@field body_prefix? string written before each body line, default two spaces
+---@field body_prefix? string extra indent before each body line, default none
+---@field block_prefix? string written before every line of the call, default "> ", "" disables it
 
 ---@class Crust.Chat.Tools.Display
 ---@field name string tool name
@@ -33,6 +34,9 @@
 local Display = {}
 Display.__index = Display
 
+--- Every tool call is rendered as a quoted block.
+Display.BLOCK_PREFIX = "> "
+
 local Config = require("crust.config")
 local Highlights = require("crust.ui.highlights")
 local Syntax = require("crust.ui.syntax")
@@ -42,15 +46,11 @@ local Syntax = require("crust.ui.syntax")
 ---@field col integer byte offset, 0-based
 ---@field end_col integer byte offset, exclusive
 ---@field group string highlight group
----@field priority? integer extmark priority, backgrounds sit below the text
 
 ---@class Crust.Chat.Tools.Render
 ---@field lines string[]
 ---@field highlights Crust.Chat.Tools.Highlight[]
 ---@field line_highlights table<integer, string> full-line background per line
-
---- Backgrounds are drawn under the syntax highlights, which only set colors.
-local BACKGROUND_PRIORITY = 100
 
 ---@type table<Crust.Chat.Tools.Status, string>
 local FALLBACK_ICONS = {
@@ -187,20 +187,6 @@ local function syntax_highlights(text, lang, line, col, continuation)
 	return highlights
 end
 
---- Add a background range under already collected text highlights.
----@param highlights Crust.Chat.Tools.Highlight[]
----@param line integer
----@param col integer
----@param end_col integer
----@param group string
-local function background(highlights, line, col, end_col, group)
-	if end_col <= col then
-		return
-	end
-	highlights[#highlights + 1] =
-		{ line = line, col = col, end_col = end_col, group = group, priority = BACKGROUND_PRIORITY }
-end
-
 --- Lines plus their highlight ranges.
 ---@return Crust.Chat.Tools.Render
 function Display:render()
@@ -234,13 +220,12 @@ function Display:render()
 		else
 			highlights[#highlights + 1] = { line = 1, col = col, end_col = #head, group = Highlights.TOOL_TITLE }
 		end
-		-- Only the title text is shaded, not the icon and tool name.
-		background(highlights, 1, prefix_col, #head, Highlights.TOOL_BACKGROUND)
 	end
 
 	local lines = { head }
+	-- The whole call is one shaded block.
 	---@type table<integer, string>
-	local line_highlights = {}
+	local line_highlights = { Highlights.TOOL_BACKGROUND }
 
 	if self:is_inline() then
 		if #body > 0 then
@@ -254,19 +239,16 @@ function Display:render()
 				highlights[#highlights + 1] =
 					{ line = 1, col = col, end_col = #lines[1], group = Highlights.TOOL_BODY_INLINE }
 			end
-			-- Inline bodies share the title line, so only the text is shaded.
-			background(highlights, 1, col, #lines[1], Highlights.TOOL_BODY_BACKGROUND)
 		end
-		return { lines = lines, highlights = highlights, line_highlights = line_highlights }
+		return self:_prefix_block({ lines = lines, highlights = highlights, line_highlights = line_highlights })
 	end
 
-	local body_prefix = self.spec.body_prefix or "  "
+	local body_prefix = self.spec.body_prefix or ""
 	local body_line = #lines + 1
 	for _, line in ipairs(body) do
 		lines[#lines + 1] = vim.trim(body_prefix .. line) == "" and body_prefix or (body_prefix .. line)
-		-- Tool output gets a full-width line background.
 		line_highlights[#lines] = Highlights.TOOL_BODY_BACKGROUND
-		if self.spec.body_prefix then
+		if self.spec.body_prefix and body_prefix ~= "" then
 			highlights[#highlights + 1] =
 				{ line = #lines, col = 0, end_col = #body_prefix, group = Highlights.TOOL_PREFIX }
 		end
@@ -283,7 +265,32 @@ function Display:render()
 		end
 	end
 
-	return { lines = lines, highlights = highlights, line_highlights = line_highlights }
+	return self:_prefix_block({ lines = lines, highlights = highlights, line_highlights = line_highlights })
+end
+
+--- Put `block_prefix` in front of every line and shift the highlights along.
+---@private
+---@param render Crust.Chat.Tools.Render
+---@return Crust.Chat.Tools.Render
+function Display:_prefix_block(render)
+	local prefix = self.spec.block_prefix or Display.BLOCK_PREFIX
+	if prefix == "" then
+		return render
+	end
+
+	-- Shift the existing highlights before adding the prefix ones.
+	for _, hl in ipairs(render.highlights) do
+		hl.col = hl.col + #prefix
+		hl.end_col = hl.end_col + #prefix
+	end
+
+	for index, line in ipairs(render.lines) do
+		render.lines[index] = vim.trim(line) == "" and prefix or (prefix .. line)
+		render.highlights[#render.highlights + 1] =
+			{ line = index, col = 0, end_col = #prefix, group = Highlights.TOOL_PREFIX }
+	end
+
+	return render
 end
 
 --- Rendered lines without highlight information.

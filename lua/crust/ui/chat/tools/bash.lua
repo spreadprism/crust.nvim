@@ -6,7 +6,6 @@ local MAX_BODY_LINES = 10
 return {
 	title_lang = "bash",
 	title_prefix = "> ",
-	body_prefix = "> ",
 
 	title = function(display)
 		local command = display.args.command
