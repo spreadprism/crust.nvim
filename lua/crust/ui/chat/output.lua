@@ -11,6 +11,7 @@ Output.SEPARATOR = "---"
 
 local scratch = require("crust.ui.scratch")
 local Highlights = require("crust.ui.highlights")
+local RenderMarkdown = require("crust.integrations.render_markdown")
 
 --- Tracks appended blocks so they can be rewritten after later appends.
 local ns = vim.api.nvim_create_namespace("crust.chat.output.blocks")
@@ -72,6 +73,7 @@ function Output:close()
 		vim.api.nvim_win_close(win, false)
 	end
 	self._win = nil
+	RenderMarkdown.detach(self._buf)
 end
 
 --- Append raw text, continuing the last line (streaming friendly).
@@ -98,6 +100,7 @@ function Output:append(text)
 	vim.bo[self._buf].modifiable = false
 
 	self:follow()
+	self:_render_markdown()
 end
 
 --- Drop trailing blank lines so separators never stack up.
@@ -189,6 +192,7 @@ function Output:replace_block(block, lines, highlights)
 	self:_highlight_block(pos[1], #lines, highlights)
 
 	self:follow()
+	self:_render_markdown()
 end
 
 --- Highlight a range on an absolute row.
@@ -240,6 +244,18 @@ function Output:clear()
 	vim.bo[self._buf].modifiable = true
 	vim.api.nvim_buf_set_lines(self._buf, 0, -1, false, { "" })
 	vim.bo[self._buf].modifiable = false
+end
+
+--- Ask render-markdown.nvim to re-render, it does not see our buffer while
+--- the user is typing in the input window.
+---@private
+function Output:_render_markdown()
+	local config = require("crust.config")
+	local cfg = config.get().render_markdown
+	if not config.enabled(cfg.enabled) then
+		return
+	end
+	RenderMarkdown.render(self._buf, Output.FILETYPE, cfg.debounce_ms)
 end
 
 --- Keep the cursor pinned to the last line so streaming stays visible.

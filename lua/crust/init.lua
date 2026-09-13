@@ -42,6 +42,9 @@ function M.setup(opts)
 
 	require("crust.filetypes").setup()
 	require("crust.ui.highlights").setup()
+
+	-- render-markdown.nvim may load after us, so only report, never disable.
+	M.has_render_markdown = require("crust.integrations.render_markdown").available()
 end
 
 return M

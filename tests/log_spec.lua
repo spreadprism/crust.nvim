@@ -113,7 +113,7 @@ describe("pi client logging", function()
 
 	before_each(function()
 		dir = vim.fn.tempname()
-		config.options = { log = { dir = dir } }
+		config.options = { log = { enabled = true, dir = dir } }
 		config.config = nil
 	end)
 

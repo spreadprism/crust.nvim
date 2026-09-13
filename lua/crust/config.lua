@@ -13,9 +13,14 @@ local M = {}
 ---@field enabled boolean write the raw rpc transcript to disk
 ---@field dir string directory holding `crust-<session>.log` files
 
+---@class Crust.Config.RenderMarkdown
+---@field enabled boolean|fun(): boolean push renders to render-markdown.nvim when it is installed
+---@field debounce_ms integer quiet period before re-rendering while streaming
+
 ---@class Crust.Config
 ---@field bin string
 ---@field log Crust.Config.Log
+---@field render_markdown Crust.Config.RenderMarkdown
 ---@field icons Crust.Config.Icons status icons shown before a tool title
 ---@field labels Crust.Config.Labels message icons, same glyphs as pi.nvim
 ---@field timestamp_format string passed to os.date for message timestamps
@@ -32,8 +37,15 @@ M.defaults = {
 	},
 	timestamp_format = "%b %-d %Y, %H:%M",
 	log = {
-		enabled = true,
+		enabled = false,
 		dir = vim.fn.stdpath("state") .. "/crust",
+	},
+	render_markdown = {
+		enabled = function()
+			local ok = pcall(require, "render-markdown")
+			return ok
+		end,
+		debounce_ms = 100,
 	},
 }
 
@@ -48,6 +60,16 @@ function M.setup(opts)
 		vim.notify("crust: setup() called more than once, overriding previous options", vim.log.levels.WARN)
 	end
 	M.options = opts
+end
+
+--- Resolve an option that may be given as a value or a function.
+---@param value boolean|fun(): boolean
+---@return boolean
+function M.enabled(value)
+	if type(value) == "function" then
+		return value() == true
+	end
+	return value == true
 end
 
 ---@return Crust.Config
