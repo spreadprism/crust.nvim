@@ -3,7 +3,7 @@
 --- A display is built from a spec:
 ---   title   string|fun(display): string   shown after the tool name
 ---   body    fun(display): string[]|string|nil   optional detail lines
----   inline  boolean   render the body on the title line
+---   inline  boolean|fun(display): boolean   render the body on the title line
 ---   title_lang  string   treesitter language for the title, e.g. "bash"
 ---   body_lang   string   treesitter language for the body
 ---
@@ -18,7 +18,7 @@
 ---@class Crust.Chat.Tools.Spec
 ---@field title? string|fun(display: Crust.Chat.Tools.Display): string
 ---@field body? fun(display: Crust.Chat.Tools.Display): string[]|string|nil
----@field inline? boolean render the body on the title line instead of under it
+---@field inline? boolean|fun(display: Crust.Chat.Tools.Display): boolean render the body on the title line instead of under it
 ---@field title_lang? string treesitter language used to highlight the title
 ---@field body_lang? string treesitter language used to highlight the body
 
@@ -141,10 +141,15 @@ function Display:body()
 	return body
 end
 
---- True when the spec asks for a single-line rendering.
+--- True when the spec asks for a single-line rendering. Specs can decide per
+--- call, e.g. inline on success and multi-line on error.
 ---@return boolean
 function Display:is_inline()
-	return self.spec.inline == true
+	local inline = self.spec.inline
+	if type(inline) == "function" then
+		return inline(self) == true
+	end
+	return inline == true
 end
 
 --- Treesitter ranges for `text`, shifted into the rendered layout.

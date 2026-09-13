@@ -26,7 +26,7 @@ M.groups = {
 	[M.TIMESTAMP] = { link = "Comment" },
 	[M.TOOL] = { link = "Constant" },
 	[M.TOOL_TITLE] = { link = "Directory" },
-	[M.TOOL_BODY] = { link = "Comment" },
+	[M.TOOL_BODY] = { link = "Normal" },
 	[M.TOOL_BODY_INLINE] = { link = "Comment" },
 	-- Full-line backgrounds, applied with line_hl_group. Link them to
 	-- "Normal" to turn the shading off.

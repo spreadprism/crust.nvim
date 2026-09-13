@@ -2,7 +2,10 @@
 
 ---@type Crust.Chat.Tools.Spec
 return {
-	inline = true,
+	-- A line count fits on the title line, an error message does not.
+	inline = function(display)
+		return display.status ~= "error"
+	end,
 
 	title = function(display)
 		local path = display.args.path or display.args.file_path

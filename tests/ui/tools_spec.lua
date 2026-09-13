@@ -108,6 +108,25 @@ describe("ui.chat.tools", function()
 			assert.are.same({ icons.pending .. " thing: do it" }, display:lines())
 		end)
 
+		it("accepts a function for inline", function()
+			local spec = {
+				title = "t",
+				inline = function(display)
+					return display.status ~= "error"
+				end,
+				body = function()
+					return { "detail" }
+				end,
+			}
+
+			local display = Display.new("thing", spec, {})
+			assert.is_true(display:is_inline())
+
+			display:set_status("error")
+			assert.is_false(display:is_inline())
+			assert.are.same({ icons.error .. " thing: t", "  detail" }, display:lines())
+		end)
+
 		it("is not inline unless the spec asks for it", function()
 			local display = Display.new("thing", { title = "do it" }, {})
 			assert.is_false(display:is_inline())
@@ -409,6 +428,17 @@ describe("ui.chat.tools", function()
 			assert.are.equal("line 30", body[#body])
 		end)
 
+		it("renders a failed read as a multi-line body", function()
+			local display = Display.new("read", Tools.spec("read"), { path = "markdown.md" })
+			display:update({ type = "tool_execution_end", isError = true, result = result("ENOENT: no such file") })
+
+			assert.is_false(display:is_inline())
+			assert.are.same({
+				icons.error .. " read: markdown.md",
+				"  ENOENT: no such file",
+			}, display:lines())
+		end)
+
 		it("renders read inline as a path plus its line count", function()
 			local display = Display.new("read", Tools.spec("read"), { path = "/tmp/x.lua" })
 			assert.are.equal("/tmp/x.lua", display:title())
@@ -521,7 +551,7 @@ describe("ui.chat.tools", function()
 				result = result("no such file"),
 			})
 
-			assert.are.same({ icons.error .. " read: x no such file", "", "" }, out:lines())
+			assert.are.same({ icons.error .. " read: x", "  no such file", "", "" }, out:lines())
 		end)
 
 		it("ignores events without a tool call id", function()
