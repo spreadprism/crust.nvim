@@ -10,13 +10,14 @@ Input.__index = Input
 local scratch = require("crust.ui.scratch")
 
 Input.HEIGHT = 5
+Input.FILETYPE = require("crust.filetypes").input
 
 --- @param on_submit fun(text: string) called with the trimmed buffer content
 ---@return Crust.Chat.Input
 function Input.new(on_submit)
 	local self = setmetatable({}, Input)
 
-	self._buf = scratch("crust://input", "markdown")
+	self._buf = scratch("crust://input", Input.FILETYPE, true)
 	self._win = nil
 	self._on_submit = on_submit
 

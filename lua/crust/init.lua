@@ -39,6 +39,9 @@ function M.setup(opts)
 	if opts then
 		require("crust.config").setup(opts)
 	end
+
+	require("crust.filetypes").setup()
+	require("crust.ui.highlights").setup()
 end
 
 return M

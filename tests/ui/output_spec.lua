@@ -8,6 +8,18 @@ describe("ui.chat.output", function()
 		out = Output.new()
 	end)
 
+	describe("buffer", function()
+		it("uses the crust_output filetype", function()
+			assert.are.equal("crust_output", vim.bo[out:buf()].filetype)
+			assert.are.equal("crust_output", Output.FILETYPE)
+		end)
+
+		it("is a scratch buffer", function()
+			assert.are.equal("nofile", vim.bo[out:buf()].buftype)
+			assert.is_false(vim.bo[out:buf()].swapfile)
+		end)
+	end)
+
 	describe("append", function()
 		it("starts from an empty buffer", function()
 			assert.are.same({ "" }, out:lines())

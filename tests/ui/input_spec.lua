@@ -13,6 +13,11 @@ describe("ui.chat.input", function()
 		end)
 	end)
 
+	it("uses the crust_input filetype", function()
+		assert.are.equal("crust_input", vim.bo[input:buf()].filetype)
+		assert.are.equal("crust_input", Input.FILETYPE)
+	end)
+
 	it("starts empty", function()
 		assert.are.equal("", input:text())
 	end)

@@ -6,6 +6,8 @@
 local Output = {}
 Output.__index = Output
 
+Output.FILETYPE = require("crust.filetypes").output
+
 local scratch = require("crust.ui.scratch")
 local Highlights = require("crust.ui.highlights")
 
@@ -23,7 +25,7 @@ function Output.new()
 	local self = setmetatable({}, Output)
 
 	Highlights.setup()
-	self._buf = scratch("crust://chat", "markdown")
+	self._buf = scratch("crust://chat", Output.FILETYPE, true)
 	vim.bo[self._buf].modifiable = false
 	self._win = nil
 
