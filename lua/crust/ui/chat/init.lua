@@ -5,6 +5,7 @@
 ---@field private _input Crust.Chat.Input
 ---@field private _output Crust.Chat.Output
 ---@field private _tools Crust.Chat.Tools
+---@field private _status Crust.Chat.Status
 ---@field private _streaming boolean
 ---@field private _augroup integer?
 ---@field private _closing boolean
@@ -18,6 +19,7 @@ local Command = require("crust.pi.rpc")
 local Input = require("crust.ui.chat.input")
 local Output = require("crust.ui.chat.output")
 local Tools = require("crust.ui.chat.tools")
+local Status = require("crust.ui.chat.status")
 local Highlights = require("crust.ui.highlights")
 
 local WIDTH_RATIO = 0.4
@@ -33,9 +35,19 @@ function Chat.new(opts)
 	self._streaming = false
 	self._output = Output.new()
 	self._tools = Tools.new()
+	self._status = Status.new(self._output)
 	self._input = Input.new(function(text)
 		self:_send(text)
 	end)
+
+	local cancel = require("crust.config").get().keymaps.cancel
+	if cancel then
+		local function abort()
+			self:cancel()
+		end
+		vim.keymap.set({ "n", "i" }, cancel, abort, { buffer = self._input:buf(), desc = "crust: cancel" })
+		vim.keymap.set("n", cancel, abort, { buffer = self._output:buf(), desc = "crust: cancel" })
+	end
 
 	self._pi = Pi.new(vim.tbl_extend("force", opts or {}, {
 		on_event = function(event)
@@ -61,6 +73,11 @@ end
 ---@return Crust.Chat.Output
 function Chat:output()
 	return self._output
+end
+
+---@return Crust.Chat.Status
+function Chat:status()
+	return self._status
 end
 
 ---@return integer out_buf, integer in_buf
@@ -128,6 +145,7 @@ function Chat:resize()
 
 	self._output:set_width(math.floor(vim.o.columns * WIDTH_RATIO))
 	self._input:restore_height()
+	self._status:render()
 end
 
 function Chat:close()
@@ -141,6 +159,7 @@ function Chat:close()
 		self._augroup = nil
 	end
 
+	self._status:close()
 	self._input:close()
 	self._output:close()
 	self._closing = false
@@ -191,6 +210,23 @@ function Chat:_send(text)
 	end
 end
 
+--- Abort the running turn. Does nothing when the agent is idle.
+---@return boolean aborted
+function Chat:cancel()
+	if not self._streaming or not self._pi:is_running() then
+		return false
+	end
+
+	local _, err = self._pi:send(Command.abort())
+	if err then
+		self._output:error(err)
+		return false
+	end
+
+	self._status:set("Cancelling…")
+	return true
+end
+
 function Chat:stop()
 	self._pi:close()
 end
@@ -201,20 +237,26 @@ function Chat:_on_event(event)
 	if event.type == "agent_start" then
 		self._streaming = true
 		self._output:header(require("crust.config").get().labels.agent, Highlights.AGENT_TITLE)
+		self._status:set(require("crust.config").get().status_text)
 	elseif event.type == "agent_end" then
 		self._streaming = false
+		self._status:clear()
 		self._output:append("\n")
 	elseif event.type == "message_update" then
 		local ev = event.assistantMessageEvent
 		if ev and ev.type == "text_delta" and ev.delta then
 			self._output:append(ev.delta)
+			-- The status sits on the last line, which just moved.
+			self._status:render()
 		end
 	elseif Tools.handles(event.type) then
 		self._tools:render(self._output, event)
+		self._status:render()
 	elseif event.type == "_stderr" then
 		self._output:error(tostring(event.message))
 	elseif event.type == "_process_exit" then
 		self._streaming = false
+		self._status:clear()
 		self._output:error("pi exited (" .. tostring(event.code) .. ")")
 	end
 end

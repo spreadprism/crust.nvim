@@ -12,6 +12,10 @@ M.TOOL = "CrustTool"
 M.TOOL_TITLE = "CrustToolTitle"
 M.TOOL_BODY = "CrustToolBody"
 M.TOOL_BODY_INLINE = "CrustToolBodyInline"
+M.STATUS = "CrustOutputStatus"
+M.STATUS_ICON = "CrustOutputStatusIcon"
+M.STATUS_TIME = "CrustOutputStatusTime"
+M.STATUS_HINT = "CrustOutputStatusHint"
 M.TOOL_PREFIX = "CrustToolPrefix"
 M.TOOL_BACKGROUND = "CrustToolBackground"
 M.TOOL_BODY_BACKGROUND = "CrustToolBodyBackground"
@@ -29,6 +33,10 @@ M.groups = {
 	[M.TOOL_TITLE] = { link = "Directory" },
 	[M.TOOL_BODY] = { link = "Normal" },
 	[M.TOOL_BODY_INLINE] = { link = "Comment" },
+	[M.STATUS] = { link = "Comment" },
+	[M.STATUS_ICON] = { link = "Keyword" },
+	[M.STATUS_TIME] = { link = "Comment" },
+	[M.STATUS_HINT] = { link = "WarningMsg" },
 	[M.TOOL_PREFIX] = { link = "Comment" },
 	-- Code-block shading. RenderMarkdownCode comes from render-markdown.nvim;
 	-- CursorLine is the fallback when that plugin is absent.

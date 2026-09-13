@@ -17,6 +17,9 @@ local M = {}
 ---@field enabled boolean|fun(): boolean push renders to render-markdown.nvim when it is installed
 ---@field debounce_ms integer quiet period before re-rendering while streaming
 
+---@class Crust.Config.Keymaps
+---@field cancel string|false abort the running turn, set to false to unbind
+
 ---@class Crust.Config.Prompt
 ---@field system_prompt? string|fun(): string? replaces pi's own system prompt
 ---@field append? string|string[]|fun(): string|string[]|nil appended after crust's block, text or a file path
@@ -36,6 +39,9 @@ local M = {}
 ---@field icons Crust.Config.Icons status icons shown before a tool title
 ---@field labels Crust.Config.Labels message icons, same glyphs as pi.nvim
 ---@field timestamp_format string passed to os.date for message timestamps
+---@field spinner string|string[]|Crust.Spinner preset name ("robot", "classic", "dots") or a custom definition
+---@field status_text string shown next to the spinner while the agent works, empty for the icon alone
+---@field keymaps Crust.Config.Keymaps
 M.defaults = {
 	bin = "pi",
 	icons = {
@@ -48,6 +54,11 @@ M.defaults = {
 		agent = "󰚩",
 	},
 	timestamp_format = "%b %-d %Y, %H:%M",
+	spinner = "robot",
+	status_text = "",
+	keymaps = {
+		cancel = "<C-c>",
+	},
 	log = {
 		enabled = false,
 		dir = vim.fn.stdpath("state") .. "/crust",

@@ -215,6 +215,78 @@ describe("ui.chat", function()
 		end)
 	end)
 
+	describe("cancel", function()
+		local sent
+
+		before_each(function()
+			sent = {}
+			chat._pi = {
+				connect = function()
+					return true
+				end,
+				is_running = function()
+					return true
+				end,
+				send = function(_, command)
+					sent[#sent + 1] = command.type
+					return "id"
+				end,
+				close = function() end,
+			}
+		end)
+
+		it("does nothing when the agent is idle", function()
+			assert.is_false(chat:cancel())
+			assert.are.same({}, sent)
+		end)
+
+		it("sends abort while streaming", function()
+			feed({ { type = "agent_start" } })
+			assert.is_true(chat:cancel())
+			assert.are.same({ "abort" }, sent)
+			assert.are.equal("Cancelling…", chat:status():text())
+		end)
+
+		it("clears the status when the turn ends", function()
+			feed({ { type = "agent_start" } })
+			chat:cancel()
+			feed({ { type = "agent_end" } })
+			assert.is_nil(chat:status():text())
+		end)
+
+		it("binds the cancel key in both buffers", function()
+			local function has_key(buf, mode)
+				for _, map in ipairs(vim.api.nvim_buf_get_keymap(buf, mode)) do
+					if map.lhs == "<C-C>" then
+						return true
+					end
+				end
+				return false
+			end
+
+			assert.is_true(has_key(chat:input():buf(), "n"))
+			assert.is_true(has_key(chat:input():buf(), "i"))
+			assert.is_true(has_key(chat:output():buf(), "n"))
+		end)
+
+		it("cancels from the keymap", function()
+			feed({ { type = "agent_start" } })
+			vim.api.nvim_set_current_buf(chat:input():buf())
+			vim.api.nvim_feedkeys(vim.keycode("<C-c>"), "x", false)
+			assert.are.same({ "abort" }, sent)
+		end)
+
+		it("can be unbound", function()
+			config.options = { keymaps = { cancel = false } }
+			config.config = nil
+
+			local other = Chat.new()
+			for _, map in ipairs(vim.api.nvim_buf_get_keymap(other:input():buf(), "n")) do
+				assert.are_not.equal("<C-C>", map.lhs)
+			end
+		end)
+	end)
+
 	describe("submit", function()
 		it("does nothing when the input is empty", function()
 			chat:submit()
