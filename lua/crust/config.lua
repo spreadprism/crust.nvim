@@ -26,6 +26,11 @@ local M = {}
 ---@field append? string|string[]|fun(): string|string[]|nil appended after crust's block, text or a file path
 ---@field include_defaults boolean prepend crust's own instructions to `append`
 
+---@class Crust.Config.Mcp
+---@field enabled boolean|fun(): boolean expose this neovim instance to pi through a bundled extension
+---@field extension? string pi extension handed to `-e`, defaults to the bundled one
+---@field server? string neovim socket to reuse, defaults to `v:servername` or a fresh `serverstart()`
+
 ---@class Crust.Config.Context
 ---@field enabled boolean keep pi's own AGENTS.md and CLAUDE.md discovery
 ---@field files? string|string[]|fun(): string|string[]|nil extra context files, appended after the discovered ones
@@ -35,6 +40,7 @@ local M = {}
 ---@field bin string
 ---@field prompt Crust.Config.Prompt
 ---@field context Crust.Config.Context
+---@field mcp Crust.Config.Mcp
 ---@field log Crust.Config.Log
 ---@field render_markdown Crust.Config.RenderMarkdown
 ---@field icons Crust.Config.Icons status icons shown before a tool title
@@ -78,6 +84,11 @@ M.defaults = {
 		enabled = true,
 		files = nil,
 		append = nil,
+	},
+	mcp = {
+		enabled = false,
+		extension = nil,
+		server = nil,
 	},
 	render_markdown = {
 		enabled = function()

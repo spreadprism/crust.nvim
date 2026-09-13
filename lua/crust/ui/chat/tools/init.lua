@@ -48,6 +48,7 @@ Tools.registry = {
 	bash = require("crust.ui.chat.tools.bash"),
 	read = require("crust.ui.chat.tools.read"),
 	edit = require("crust.ui.chat.tools.edit"),
+	write = require("crust.ui.chat.tools.write"),
 }
 
 --- Register or override the spec used for a tool.

@@ -1,8 +1,8 @@
---- Display spec for the `edit` tool: path as title, changed line counts as
---- body, rendered inline like `read`.
+--- Display spec for the `write` tool: rendered exactly like `edit`, a path as
+--- title and changed line counts as body.
 ---
---- pi sends `{ path, edits = { { oldText, newText } } }` and answers with a
---- unified diff in `result.details.diff`.
+--- pi sends `{ path, content }` and answers with a unified diff in
+--- `result.details.diff` when the file already existed.
 
 local diff = require("crust.ui.chat.tools.diff")
 
@@ -29,10 +29,11 @@ return {
 			return { "+" .. added .. " -" .. removed }
 		end
 
-		-- No diff came back, fall back to the number of replacements asked for.
-		local edits = display.args.edits
-		if type(edits) == "table" and #edits > 0 then
-			return { #edits .. (#edits == 1 and " edit" or " edits") }
+		-- No diff came back, fall back to the size of the written file.
+		local content = display.args.content
+		if type(content) == "string" and content ~= "" then
+			local lines = #vim.split(content, "\n", { plain = true })
+			return { lines .. (lines == 1 and " line" or " lines") }
 		end
 
 		return nil

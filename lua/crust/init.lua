@@ -43,6 +43,9 @@ function M.setup(opts)
 	require("crust.filetypes").setup()
 	require("crust.ui.highlights").setup()
 
+	-- Starts the neovim socket now so it exists before the first chat.
+	require("crust.integrations.mcp_server").setup()
+
 	-- render-markdown.nvim may load after us, so only report, never disable.
 	M.has_render_markdown = require("crust.integrations.render_markdown").available()
 end

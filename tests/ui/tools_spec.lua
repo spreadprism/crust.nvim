@@ -581,6 +581,72 @@ describe("ui.chat.tools", function()
 			end)
 		end)
 
+		describe("write", function()
+			local PATH = "new.lua"
+
+			---@param diff string?
+			---@return Crust.Pi.ToolResult
+			local function write_result(diff)
+				return {
+					content = { { type = "text", text = "Successfully wrote to " .. PATH } },
+					details = diff and { diff = diff } or nil,
+				}
+			end
+
+			---@param args table
+			---@return Crust.Chat.Tools.Display
+			local function display_for(args)
+				return Display.new("write", Tools.spec("write"), args)
+			end
+
+			it("renders the path inline with diff counts, like edit", function()
+				local display = display_for({ path = PATH, content = "a\nb" })
+				display:update({
+					type = "tool_execution_end",
+					result = write_result(" 1 keep\n-2 gone\n+2 new\n+3 new"),
+				})
+
+				assert.is_true(display:is_inline())
+				assert.are.equal(PATH, display:title())
+				assert.are.same({ "> " .. icons.success .. " write: " .. PATH .. " +2 -1" }, display:lines())
+			end)
+
+			it("falls back to the line count of the content without a diff", function()
+				local display = display_for({ path = PATH, content = "a\nb\nc" })
+				display:update({ type = "tool_execution_end", result = write_result(nil) })
+
+				assert.are.same({ "3 lines" }, display:body())
+			end)
+
+			it("says one line in the singular", function()
+				local display = display_for({ path = PATH, content = "only" })
+				display:update({ type = "tool_execution_end", result = write_result(nil) })
+
+				assert.are.same({ "1 line" }, display:body())
+			end)
+
+			it("shows nothing while pending", function()
+				local display = display_for({ path = PATH, content = "a" })
+				assert.are.same({}, display:body())
+				assert.are.same({ "> " .. icons.pending .. " write: " .. PATH }, display:lines())
+			end)
+
+			it("renders a failure as a multi-line body", function()
+				local display = display_for({ path = PATH, content = "a" })
+				display:update({
+					type = "tool_execution_end",
+					isError = true,
+					result = result("EACCES: permission denied"),
+				})
+
+				assert.is_false(display:is_inline())
+				assert.are.same({
+					"> " .. icons.error .. " write: " .. PATH,
+					"> EACCES: permission denied",
+				}, display:lines())
+			end)
+		end)
+
 		it("registers a custom spec", function()
 			Tools.register("custom-tool", { title = "custom!" })
 			assert.are.equal("custom!", Tools.spec("custom-tool").title)
