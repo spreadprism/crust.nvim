@@ -1,0 +1,57 @@
+--- Highlight groups. Every group is defined with `default = true`, so a user
+--- or colorscheme definition always wins.
+
+---@class Crust.Highlights
+local M = {}
+
+M.TOOL = "CrustTool"
+M.TOOL_TITLE = "CrustToolTitle"
+M.TOOL_BODY = "CrustToolBody"
+M.TOOL_BODY_INLINE = "CrustToolBodyInline"
+M.TOOL_ICON_PENDING = "CrustToolIconPending"
+M.TOOL_ICON_SUCCESS = "CrustToolIconSuccess"
+M.TOOL_ICON_ERROR = "CrustToolIconError"
+
+---@type table<string, vim.api.keyset.highlight>
+M.groups = {
+	[M.TOOL] = { link = "Function" },
+	[M.TOOL_TITLE] = { link = "Directory" },
+	[M.TOOL_BODY] = { link = "Comment" },
+	[M.TOOL_BODY_INLINE] = { link = "Comment" },
+	[M.TOOL_ICON_PENDING] = { link = "DiagnosticWarn" },
+	[M.TOOL_ICON_SUCCESS] = { link = "DiagnosticOk" },
+	[M.TOOL_ICON_ERROR] = { link = "DiagnosticError" },
+}
+
+---@type table<Crust.Chat.Tools.Status, string>
+M.tool_icon = {
+	pending = M.TOOL_ICON_PENDING,
+	success = M.TOOL_ICON_SUCCESS,
+	error = M.TOOL_ICON_ERROR,
+}
+
+local applied = false
+
+--- Define the groups once, and redefine them after a colorscheme change.
+---@param force? boolean redefine even if already applied
+function M.setup(force)
+	if applied and not force then
+		return
+	end
+	applied = true
+
+	for name, def in pairs(M.groups) do
+		vim.api.nvim_set_hl(0, name, vim.tbl_extend("keep", def, { default = true }))
+	end
+
+	vim.api.nvim_create_autocmd("ColorScheme", {
+		group = vim.api.nvim_create_augroup("crust.highlights", { clear = true }),
+		callback = function()
+			for name, def in pairs(M.groups) do
+				vim.api.nvim_set_hl(0, name, vim.tbl_extend("keep", def, { default = true }))
+			end
+		end,
+	})
+end
+
+return M

@@ -1,9 +1,43 @@
 local M = {}
 
-function M.setup()
+local Chat = require("crust.ui.chat")
+
+---@type Crust.Chat?
+local chat = nil
+
+---@return Crust.Chat
+function M.chat()
+	if not chat then
+		chat = Chat.new()
+	end
+	return chat
+end
+
+function M.open()
+	M.chat():open()
+end
+
+function M.toggle()
+	M.chat():toggle()
+end
+
+function M.stop()
+	if chat then
+		chat:close()
+		chat:stop()
+		chat = nil
+	end
+end
+
+---@param opts? Crust.Config
+function M.setup(opts)
 	if vim.fn.has("nvim-0.13") == 0 then
-		vim.log.error("crust.nvim requires nvim-0.13 features")
+		vim.notify("crust.nvim requires nvim-0.13 features", vim.log.levels.ERROR)
 		return
+	end
+
+	if opts then
+		require("crust.config").setup(opts)
 	end
 end
 
