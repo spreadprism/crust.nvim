@@ -67,6 +67,15 @@ function Output:open(width)
 	self._win = win
 end
 
+--- Resize the output window, the panel owns the remaining space.
+---@param width integer
+function Output:set_width(width)
+	local win = self:win()
+	if win then
+		vim.api.nvim_win_set_width(win, math.max(width, 1))
+	end
+end
+
 function Output:close()
 	local win = self:win()
 	if win then
@@ -101,6 +110,20 @@ function Output:append(text)
 
 	self:follow()
 	self:_render_markdown()
+end
+
+--- Text columns available in the output window, nil when it is not shown.
+---@return integer?
+function Output:width()
+	local win = self:win()
+	if not win then
+		return nil
+	end
+
+	local info = vim.fn.getwininfo(win)[1]
+	local width = info and info.width or vim.api.nvim_win_get_width(win)
+	local textoff = info and info.textoff or 0
+	return math.max(width - textoff, 1)
 end
 
 --- Drop trailing blank lines so separators never stack up.

@@ -287,6 +287,41 @@ describe("ui.chat.tools", function()
 			end
 		end)
 
+		it("cuts a long title to the given width", function()
+			local long = "ls -la MARKDOWN.md 2>/dev/null || find . -maxdepth 3 -iname MARKDOWN.md"
+			local display = Display.new("bash", Tools.spec("bash"), { command = long })
+
+			local line = display:lines(40)[1]
+			assert.are.equal(40, vim.fn.strdisplaywidth(line))
+			assert.are.equal("…", line:sub(-3))
+		end)
+
+		it("leaves a short title alone", function()
+			local display = Display.new("bash", Tools.spec("bash"), { command = "ls" })
+			assert.are.equal(display:lines()[1], display:lines(40)[1])
+		end)
+
+		it("does not cut output lines", function()
+			local display = Display.new("bash", Tools.spec("bash"), { command = "ls" })
+			display:update({ type = "tool_execution_end", result = result(string.rep("x", 80)) })
+
+			assert.are.equal(82, #display:lines(40)[2])
+		end)
+
+		it("drops highlights past the cut and clamps the one crossing it", function()
+			local long = "echo aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+			local display = Display.new("bash", Tools.spec("bash"), { command = long })
+
+			local render = display:render(30)
+			local limit = #render.lines[1]
+			for _, hl in ipairs(render.highlights) do
+				if hl.line == 1 then
+					assert.is_true(hl.col < limit)
+					assert.is_true(hl.end_col <= limit)
+				end
+			end
+		end)
+
 		it("shades every line of the call", function()
 			local display = Display.new("bash", Tools.spec("bash"), { command = "echo foobar" })
 			display:update({ type = "tool_execution_end", result = result("foobar") })
@@ -636,6 +671,19 @@ describe("ui.chat.tools", function()
 				"",
 				"",
 			}, out:lines())
+		end)
+
+		it("cuts the title to the output window", function()
+			out:open(40)
+			tools:render(out, {
+				type = "tool_execution_start",
+				toolCallId = "1",
+				toolName = "bash",
+				args = { command = string.rep("long-command ", 20) },
+			})
+
+			assert.is_true(vim.fn.strdisplaywidth(out:lines()[1]) <= out:width())
+			out:close()
 		end)
 
 		it("ignores events without a tool call id", function()

@@ -61,6 +61,14 @@ function Input:open()
 	self._win = win
 end
 
+--- Pin the input back to its fixed height, e.g. after the editor resized.
+function Input:restore_height()
+	local win = self:win()
+	if win and vim.api.nvim_win_get_height(win) ~= Input.HEIGHT then
+		vim.api.nvim_win_set_height(win, Input.HEIGHT)
+	end
+end
+
 function Input:close()
 	local win = self:win()
 	if win then

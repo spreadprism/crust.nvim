@@ -1,4 +1,5 @@
 local Chat = require("crust.ui.chat")
+local Input = require("crust.ui.chat.input")
 local config = require("crust.config")
 
 ---@param text string
@@ -87,6 +88,38 @@ describe("ui.chat", function()
 			end)
 			assert.is_nil(chat:output():win())
 			assert.is_false(chat:is_visible())
+		end)
+
+		it("keeps the input height and gives the rest to the output on resize", function()
+			local columns, lines = vim.o.columns, vim.o.lines
+
+			vim.o.columns, vim.o.lines = 200, 60
+			vim.api.nvim_exec_autocmds("VimResized", {})
+
+			assert.are.equal(math.floor(200 * 0.4), vim.api.nvim_win_get_width(chat:output():win()))
+			assert.are.equal(Input.HEIGHT, vim.api.nvim_win_get_height(chat:input():win()))
+
+			vim.o.columns, vim.o.lines = 80, 24
+			vim.api.nvim_exec_autocmds("VimResized", {})
+
+			assert.are.equal(math.floor(80 * 0.4), vim.api.nvim_win_get_width(chat:output():win()))
+			assert.are.equal(Input.HEIGHT, vim.api.nvim_win_get_height(chat:input():win()))
+
+			vim.o.columns, vim.o.lines = columns, lines
+			vim.api.nvim_exec_autocmds("VimResized", {})
+		end)
+
+		it("restores the input height when something stretched it", function()
+			vim.api.nvim_win_set_height(chat:input():win(), 15)
+			chat:resize()
+			assert.are.equal(Input.HEIGHT, vim.api.nvim_win_get_height(chat:input():win()))
+		end)
+
+		it("does nothing when the chat is hidden", function()
+			chat:close()
+			assert.has_no.errors(function()
+				chat:resize()
+			end)
 		end)
 
 		it("ignores unrelated windows closing", function()

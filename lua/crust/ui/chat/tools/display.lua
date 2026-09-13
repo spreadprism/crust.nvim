@@ -187,9 +187,63 @@ local function syntax_highlights(text, lang, line, col, continuation)
 	return highlights
 end
 
---- Lines plus their highlight ranges.
+--- Cut a line to `width` display cells, marking the cut with an ellipsis.
+---@param line string
+---@param width integer
+---@return string
+local function truncate(line, width)
+	if width < 2 or vim.fn.strdisplaywidth(line) <= width then
+		return line
+	end
+
+	local chars = vim.fn.strchars(line)
+	for count = chars, 0, -1 do
+		local cut = vim.fn.strcharpart(line, 0, count)
+		if vim.fn.strdisplaywidth(cut) + 1 <= width then
+			return cut .. "…"
+		end
+	end
+
+	return line
+end
+
+--- Keep the title on one line: cut it and clamp the highlights that ran past
+--- the cut, so a long command never wraps.
+---@private
+---@param render Crust.Chat.Tools.Render
+---@param width integer?
 ---@return Crust.Chat.Tools.Render
-function Display:render()
+function Display:_truncate_title(render, width)
+	if not width or width <= 0 then
+		return render
+	end
+
+	local line = render.lines[1]
+	local cut = truncate(line, width)
+	if cut == line then
+		return render
+	end
+	render.lines[1] = cut
+
+	local limit = #cut
+	local kept = {}
+	for _, hl in ipairs(render.highlights) do
+		if hl.line ~= 1 or hl.col < limit then
+			if hl.line == 1 then
+				hl.end_col = math.min(hl.end_col, limit)
+			end
+			kept[#kept + 1] = hl
+		end
+	end
+	render.highlights = kept
+
+	return render
+end
+
+--- Lines plus their highlight ranges.
+---@param width integer? cut the title line to this many cells
+---@return Crust.Chat.Tools.Render
+function Display:render(width)
 	local icon = self:icon()
 	local title = self:title()
 	local body = self:body()
@@ -240,7 +294,10 @@ function Display:render()
 					{ line = 1, col = col, end_col = #lines[1], group = Highlights.TOOL_BODY_INLINE }
 			end
 		end
-		return self:_prefix_block({ lines = lines, highlights = highlights, line_highlights = line_highlights })
+		return self:_truncate_title(
+			self:_prefix_block({ lines = lines, highlights = highlights, line_highlights = line_highlights }),
+			width
+		)
 	end
 
 	local body_prefix = self.spec.body_prefix or ""
@@ -265,7 +322,10 @@ function Display:render()
 		end
 	end
 
-	return self:_prefix_block({ lines = lines, highlights = highlights, line_highlights = line_highlights })
+	return self:_truncate_title(
+		self:_prefix_block({ lines = lines, highlights = highlights, line_highlights = line_highlights }),
+		width
+	)
 end
 
 --- Put `block_prefix` in front of every line and shift the highlights along.
@@ -294,9 +354,10 @@ function Display:_prefix_block(render)
 end
 
 --- Rendered lines without highlight information.
+---@param width integer?
 ---@return string[]
-function Display:lines()
-	return self:render().lines
+function Display:lines(width)
+	return self:render(width).lines
 end
 
 return Display

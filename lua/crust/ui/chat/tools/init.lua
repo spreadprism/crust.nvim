@@ -101,7 +101,8 @@ function Tools:render(output, event)
 	end
 	display:update(event)
 
-	local render = display:render()
+	-- The title is cut to the window so a long command never wraps.
+	local render = display:render(output:width())
 	local block = self._blocks[id]
 	if block then
 		output:replace_block(block, render.lines, render.highlights, render.line_highlights)

@@ -97,6 +97,13 @@ function Chat:_watch_windows()
 	local watched = { [self._output:win()] = true, [self._input:win()] = true }
 
 	self._augroup = vim.api.nvim_create_augroup("crust.chat." .. self._id, { clear = true })
+	vim.api.nvim_create_autocmd({ "VimResized", "WinResized" }, {
+		group = self._augroup,
+		callback = function()
+			self:resize()
+		end,
+	})
+
 	vim.api.nvim_create_autocmd("WinClosed", {
 		group = self._augroup,
 		callback = function(event)
@@ -110,6 +117,17 @@ function Chat:_watch_windows()
 			end)
 		end,
 	})
+end
+
+--- Give the width change to the output panel and keep the input at its
+--- fixed height.
+function Chat:resize()
+	if not self:is_visible() then
+		return
+	end
+
+	self._output:set_width(math.floor(vim.o.columns * WIDTH_RATIO))
+	self._input:restore_height()
 end
 
 function Chat:close()
