@@ -4,6 +4,9 @@ local MAX_BODY_LINES = 10
 
 ---@type Crust.Chat.Tools.Spec
 return {
+	title_lang = "bash",
+	body_lang = "bash",
+
 	title = function(display)
 		local command = display.args.command
 		if type(command) ~= "string" or command == "" then

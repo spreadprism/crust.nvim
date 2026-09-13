@@ -4,6 +4,8 @@
 ---   title   string|fun(display): string   shown after the tool name
 ---   body    fun(display): string[]|string|nil   optional detail lines
 ---   inline  boolean   render the body on the title line
+---   title_lang  string   treesitter language for the title, e.g. "bash"
+---   body_lang   string   treesitter language for the body
 ---
 --- A rendered call is three highlighted segments:
 ---   <icon> <name: CrustTool> <title: CrustToolTitle> <body: CrustToolBodyInline>
@@ -17,6 +19,8 @@
 ---@field title? string|fun(display: Crust.Chat.Tools.Display): string
 ---@field body? fun(display: Crust.Chat.Tools.Display): string[]|string|nil
 ---@field inline? boolean render the body on the title line instead of under it
+---@field title_lang? string treesitter language used to highlight the title
+---@field body_lang? string treesitter language used to highlight the body
 
 ---@class Crust.Chat.Tools.Display
 ---@field name string tool name
@@ -29,6 +33,7 @@ Display.__index = Display
 
 local Config = require("crust.config")
 local Highlights = require("crust.ui.highlights")
+local Syntax = require("crust.ui.syntax")
 
 ---@class Crust.Chat.Tools.Highlight
 ---@field line integer 1-based index into the rendered lines
@@ -137,6 +142,38 @@ function Display:is_inline()
 	return self.spec.inline == true
 end
 
+--- Treesitter ranges for `text`, shifted into the rendered layout.
+--- Returns nil when the language is unavailable, so callers can fall back
+--- to a flat highlight group.
+---@param text string
+---@param lang string?
+---@param line integer rendered line holding the first line of `text`
+---@param col integer byte offset of `text` on that line
+---@return Crust.Chat.Tools.Highlight[]?
+local function syntax_highlights(text, lang, line, col)
+	if not lang then
+		return nil
+	end
+
+	local ranges = Syntax.highlight(text, lang)
+	if not ranges or #ranges == 0 then
+		return nil
+	end
+
+	local highlights = {}
+	for _, range in ipairs(ranges) do
+		-- Only the first line starts at `col`, later ones start at the indent.
+		local offset = range.line == 1 and col or 2
+		highlights[#highlights + 1] = {
+			line = line + range.line - 1,
+			col = offset + range.col,
+			end_col = offset + range.end_col,
+			group = range.group,
+		}
+	end
+	return highlights
+end
+
 --- Lines plus their highlight ranges.
 ---@return Crust.Chat.Tools.Render
 function Display:render()
@@ -153,7 +190,12 @@ function Display:render()
 	if title ~= "" then
 		local col = #head + 1
 		head = head .. " " .. title
-		highlights[#highlights + 1] = { line = 1, col = col, end_col = #head, group = Highlights.TOOL_TITLE }
+		local syntax = syntax_highlights(title, self.spec.title_lang, 1, col)
+		if syntax then
+			vim.list_extend(highlights, syntax)
+		else
+			highlights[#highlights + 1] = { line = 1, col = col, end_col = #head, group = Highlights.TOOL_TITLE }
+		end
 	end
 
 	local lines = { head }
@@ -161,17 +203,32 @@ function Display:render()
 	if self:is_inline() then
 		if #body > 0 then
 			local col = #head + 1
-			lines[1] = head .. " " .. table.concat(body, " ")
-			highlights[#highlights + 1] =
-				{ line = 1, col = col, end_col = #lines[1], group = Highlights.TOOL_BODY_INLINE }
+			local text = table.concat(body, " ")
+			lines[1] = head .. " " .. text
+			local syntax = syntax_highlights(text, self.spec.body_lang, 1, col)
+			if syntax then
+				vim.list_extend(highlights, syntax)
+			else
+				highlights[#highlights + 1] =
+					{ line = 1, col = col, end_col = #lines[1], group = Highlights.TOOL_BODY_INLINE }
+			end
 		end
 		return { lines = lines, highlights = highlights }
 	end
 
+	local body_line = #lines + 1
 	for _, line in ipairs(body) do
 		lines[#lines + 1] = "  " .. line
-		highlights[#highlights + 1] =
-			{ line = #lines, col = 0, end_col = #lines[#lines], group = Highlights.TOOL_BODY }
+	end
+
+	local syntax = #body > 0 and syntax_highlights(table.concat(body, "\n"), self.spec.body_lang, body_line, 2)
+	if syntax then
+		vim.list_extend(highlights, syntax)
+	else
+		for index = body_line, #lines do
+			highlights[#highlights + 1] =
+				{ line = index, col = 0, end_col = #lines[index], group = Highlights.TOOL_BODY }
+		end
 	end
 
 	return { lines = lines, highlights = highlights }

@@ -22,7 +22,7 @@ M.groups = {
 	[M.USER_TITLE] = { link = "Identifier" },
 	[M.AGENT_TITLE] = { link = "Special" },
 	[M.TIMESTAMP] = { link = "Comment" },
-	[M.TOOL] = { link = "Function" },
+	[M.TOOL] = { link = "Constant" },
 	[M.TOOL_TITLE] = { link = "Directory" },
 	[M.TOOL_BODY] = { link = "Comment" },
 	[M.TOOL_BODY_INLINE] = { link = "Comment" },

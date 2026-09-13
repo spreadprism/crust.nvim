@@ -155,6 +155,86 @@ describe("ui.chat.tools", function()
 			}, segments(display))
 		end)
 
+		-- "lua" ships with neovim, the bash parser does not exist in the
+		-- isolated test runner. The bash spec uses the same mechanism.
+		it("highlights the title with a treesitter language", function()
+			local display = Display.new("eval", { title_lang = "lua", title = 'local x = "hi"' }, {})
+			local groups = vim.tbl_map(function(segment)
+				return segment[1]
+			end, segments(display))
+
+			assert.is_falsy(vim.tbl_contains(groups, Highlights.TOOL_TITLE))
+			assert.is_truthy(vim.tbl_contains(groups, "@keyword"))
+			assert.is_truthy(vim.tbl_contains(groups, "@string"))
+		end)
+
+		it("highlights the title in place, after the tool name", function()
+			local display = Display.new("eval", { title_lang = "lua", title = "local x" }, {})
+			for _, segment in ipairs(segments(display)) do
+				if segment[1] == "@keyword" then
+					assert.are.equal("local", segment[2])
+				end
+			end
+		end)
+
+		it("highlights body lines with a treesitter language", function()
+			local display = Display.new("eval", {
+				body_lang = "lua",
+				title = "run",
+				body = function()
+					return { "local a = 1", 'local b = "two"' }
+				end,
+			}, {})
+
+			local render = display:render()
+			assert.are.same({
+				icons.pending .. " eval run",
+				"  local a = 1",
+				'  local b = "two"',
+			}, render.lines)
+
+			local body_lines = {}
+			for _, hl in ipairs(render.highlights) do
+				if hl.line > 1 then
+					body_lines[hl.line] = true
+					-- Columns must account for the two-space indent.
+					assert.is_true(hl.col >= 2)
+					assert.is_true(hl.end_col <= #render.lines[hl.line])
+				end
+			end
+			assert.is_true(body_lines[2])
+			assert.is_true(body_lines[3])
+		end)
+
+		it("configures bash to render as shell code", function()
+			assert.are.equal("bash", Tools.spec("bash").title_lang)
+			assert.are.equal("bash", Tools.spec("bash").body_lang)
+		end)
+
+		it("falls back to the flat groups without a language", function()
+			local display = Display.new("thing", {
+				title = "plain",
+				body = function()
+					return { "one" }
+				end,
+			}, {})
+
+			assert.are.same({
+				{ Highlights.TOOL_ICON_PENDING, icons.pending },
+				{ Highlights.TOOL, "thing" },
+				{ Highlights.TOOL_TITLE, "plain" },
+				{ Highlights.TOOL_BODY, "  one" },
+			}, segments(display))
+		end)
+
+		it("falls back when the language is not installed", function()
+			local display = Display.new("thing", { title = "plain", title_lang = "not-a-language" }, {})
+			local groups = vim.tbl_map(function(segment)
+				return segment[1]
+			end, segments(display))
+			assert.is_truthy(vim.tbl_contains(groups, Highlights.TOOL_TITLE))
+		end)
+
 		it("uses a status-specific icon group", function()
 			local display = Display.new("bash", Tools.spec("bash"), { command = "ls" })
 			assert.are.equal(Highlights.TOOL_ICON_PENDING, segments(display)[1][1])
