@@ -7,6 +7,7 @@
 ---@class Crust.Chat.Tools
 ---@field private _displays table<string, Crust.Chat.Tools.Display>
 ---@field private _blocks table<string, Crust.Chat.Output.Block>
+---@field private _last { block: Crust.Chat.Output.Block, inline: boolean }?
 local Tools = {}
 Tools.__index = Tools
 
@@ -73,6 +74,7 @@ function Tools.new()
 	local self = setmetatable({}, Tools)
 	self._displays = {}
 	self._blocks = {}
+	self._last = nil
 	return self
 end
 
@@ -103,14 +105,28 @@ function Tools:render(output, event)
 	local block = self._blocks[id]
 	if block then
 		output:replace_block(block, render.lines, render.highlights, render.line_highlights)
-	else
-		self._blocks[id] = output:append_block(render.lines, render.highlights, render.line_highlights)
+		-- A call can stop being inline, e.g. when it fails.
+		if self._last and self._last.block == block then
+			self._last.inline = display:is_inline()
+		end
+		return
 	end
+
+	-- Inline calls that follow each other are stacked without a gap.
+	local compact = display:is_inline()
+		and self._last ~= nil
+		and self._last.inline
+		and output:block_ends_buffer(self._last.block)
+
+	block = output:append_block(render.lines, render.highlights, render.line_highlights, compact)
+	self._blocks[id] = block
+	self._last = { block = block, inline = display:is_inline() }
 end
 
 function Tools:reset()
 	self._displays = {}
 	self._blocks = {}
+	self._last = nil
 end
 
 return Tools

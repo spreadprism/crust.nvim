@@ -169,7 +169,6 @@ describe("ui.chat.tools", function()
 			assert.are.same({
 				{ Highlights.TOOL_ICON_SUCCESS, icons.success },
 				{ Highlights.TOOL, "bash:" },
-				{ Highlights.TOOL_PREFIX, "> " },
 				{ Highlights.TOOL_TITLE, "ls" },
 				{ Highlights.TOOL_BODY, "a" },
 				{ Highlights.TOOL_BODY, "b" },
@@ -266,7 +265,7 @@ describe("ui.chat.tools", function()
 			display:update({ type = "tool_execution_end", isError = true, result = result("no such file\n\ncode 1") })
 
 			assert.are.same({
-				"> " .. icons.error .. " bash: > cat x",
+				"> " .. icons.error .. " bash: cat x",
 				"> no such file",
 				"> ",
 				"> code 1",
@@ -461,7 +460,7 @@ describe("ui.chat.tools", function()
 		it("keeps bash multi-line", function()
 			local display = Display.new("bash", Tools.spec("bash"), { command = "ls" })
 			display:update({ type = "tool_execution_end", result = result("a\nb") })
-			assert.are.same({ "> " .. icons.success .. " bash: > ls", "> a", "> b" }, display:lines())
+			assert.are.same({ "> " .. icons.success .. " bash: ls", "> a", "> b" }, display:lines())
 		end)
 
 		it("registers a custom spec", function()
@@ -496,7 +495,7 @@ describe("ui.chat.tools", function()
 				toolName = "bash",
 				args = { command = "sleep 2" },
 			})
-			assert.are.same({ "> " .. icons.pending .. " bash: > sleep 2", "", "" }, out:lines())
+			assert.are.same({ "> " .. icons.pending .. " bash: sleep 2", "", "" }, out:lines())
 
 			tools:render(out, {
 				type = "tool_execution_update",
@@ -511,7 +510,7 @@ describe("ui.chat.tools", function()
 				result = result("hi"),
 			})
 
-			assert.are.same({ "> " .. icons.success .. " bash: > sleep 2", "> hi", "", "" }, out:lines())
+			assert.are.same({ "> " .. icons.success .. " bash: sleep 2", "> hi", "", "" }, out:lines())
 		end)
 
 		it("keeps assistant text streamed between tool events out of the block", function()
@@ -530,7 +529,7 @@ describe("ui.chat.tools", function()
 			})
 
 			assert.are.same({
-				"> " .. icons.success .. " bash: > ls",
+				"> " .. icons.success .. " bash: ls",
 				"> done",
 				"",
 				"thinking…",
@@ -543,10 +542,10 @@ describe("ui.chat.tools", function()
 			tools:render(out, { type = "tool_execution_end", toolCallId = "a", toolName = "bash", result = result("1") })
 
 			assert.are.same({
-				"> " .. icons.success .. " bash: > one",
+				"> " .. icons.success .. " bash: one",
 				"> 1",
 				"",
-				"> " .. icons.pending .. " bash: > two",
+				"> " .. icons.pending .. " bash: two",
 				"",
 				"",
 			}, out:lines())
@@ -563,6 +562,80 @@ describe("ui.chat.tools", function()
 			})
 
 			assert.are.same({ "> " .. icons.error .. " read: x", "> no such file", "", "" }, out:lines())
+		end)
+
+		---@param id string
+		---@param name string
+		---@param args table
+		---@param text string
+		---@param is_error? boolean
+		local function call(tools, out, id, name, args, text, is_error)
+			tools:render(out, { type = "tool_execution_start", toolCallId = id, toolName = name, args = args })
+			tools:render(out, {
+				type = "tool_execution_end",
+				toolCallId = id,
+				toolName = name,
+				isError = is_error,
+				result = result(text),
+			})
+		end
+
+		it("stacks consecutive inline calls without a blank line", function()
+			call(tools, out, "1", "read", { path = "a.md" }, "a")
+			call(tools, out, "2", "read", { path = "b.md" }, "a\nb")
+
+			assert.are.same({
+				"> " .. icons.success .. " read: a.md 1 lines",
+				"> " .. icons.success .. " read: b.md 2 lines",
+				"",
+				"",
+			}, out:lines())
+		end)
+
+		it("keeps a blank line around multi-line calls", function()
+			call(tools, out, "1", "bash", { command = "ls" }, "a")
+			call(tools, out, "2", "read", { path = "a.md" }, "a")
+
+			assert.are.same({
+				"> " .. icons.success .. " bash: ls",
+				"> a",
+				"",
+				"> " .. icons.success .. " read: a.md 1 lines",
+				"",
+				"",
+			}, out:lines())
+		end)
+
+		it("does not stack across streamed text", function()
+			call(tools, out, "1", "read", { path = "a.md" }, "a")
+			out:append("thinking…")
+			call(tools, out, "2", "read", { path = "b.md" }, "a")
+
+			assert.are.same({
+				"> " .. icons.success .. " read: a.md 1 lines",
+				"",
+				"thinking…",
+				"",
+				"> " .. icons.success .. " read: b.md 1 lines",
+				"",
+				"",
+			}, out:lines())
+		end)
+
+		it("separates a call that stopped being inline", function()
+			call(tools, out, "1", "read", { path = "a.md" }, "a")
+			call(tools, out, "2", "read", { path = "x.md" }, "boom", true)
+			call(tools, out, "3", "read", { path = "y.md" }, "a")
+
+			assert.are.same({
+				"> " .. icons.success .. " read: a.md 1 lines",
+				"> " .. icons.error .. " read: x.md",
+				"> boom",
+				"",
+				"> " .. icons.success .. " read: y.md 1 lines",
+				"",
+				"",
+			}, out:lines())
 		end)
 
 		it("ignores events without a tool call id", function()

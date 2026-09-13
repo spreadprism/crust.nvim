@@ -5,6 +5,7 @@
 ---@field cwd? string working directory for the process
 ---@field on_event? fun(event: Crust.Pi.Event) called for every decoded rpc event
 ---@field log? boolean|string false disables the transcript, a string names the session
+---@field prompt? Crust.Config.Prompt system prompt overrides, defaults to `config.prompt`
 
 ---@class Crust.Pi Pi instance process that manages everything
 ---@field opts Crust.Pi.Opts
@@ -18,6 +19,7 @@ Pi.__index = Pi
 
 local Command = require("crust.pi.rpc")
 local Log = require("crust.log")
+local Prompt = require("crust.prompt")
 
 local PING_TIMEOUT_MS = 5000
 
@@ -61,6 +63,7 @@ function Pi:_command()
 	if self.opts.model then
 		vim.list_extend(cmd, { "--model", self.opts.model })
 	end
+	vim.list_extend(cmd, Prompt.args(self.opts.prompt))
 	vim.list_extend(cmd, { "--mode", "rpc" })
 	return cmd
 end

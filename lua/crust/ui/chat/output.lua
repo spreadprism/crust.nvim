@@ -158,14 +158,35 @@ function Output:_highlight_block(first, count, highlights, line_highlights)
 	end
 end
 
+--- True when nothing but blank lines follows the block, so the next block
+--- can be appended directly under it.
+---@param block Crust.Chat.Output.Block
+---@return boolean
+function Output:block_ends_buffer(block)
+	local pos = vim.api.nvim_buf_get_extmark_by_id(self._buf, ns, block.id, {})
+	if not pos[1] then
+		return false
+	end
+
+	local lines = vim.api.nvim_buf_get_lines(self._buf, 0, -1, false)
+	for index = #lines, 1, -1 do
+		if lines[index] ~= "" then
+			return pos[1] + block.count == index
+		end
+	end
+	return false
+end
+
 --- Append lines as a rewritable block, isolated by one blank line on each
 --- side so streamed text never reads as part of the block.
 ---@param lines string[]
 ---@param highlights? Crust.Chat.Tools.Highlight[]
 ---@param line_highlights? table<integer, string>
+---@param compact? boolean append directly under the previous line, no blank line
 ---@return Crust.Chat.Output.Block
-function Output:append_block(lines, highlights, line_highlights)
-	local prefix = self:_trim_trailing_blanks() and "\n\n" or ""
+function Output:append_block(lines, highlights, line_highlights, compact)
+	local has_content = self:_trim_trailing_blanks()
+	local prefix = has_content and (compact and "\n" or "\n\n") or ""
 
 	self:append(prefix .. table.concat(lines, "\n") .. "\n\n")
 	local first = vim.api.nvim_buf_line_count(self._buf) - 2 - #lines

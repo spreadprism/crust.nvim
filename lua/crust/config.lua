@@ -17,8 +17,14 @@ local M = {}
 ---@field enabled boolean|fun(): boolean push renders to render-markdown.nvim when it is installed
 ---@field debounce_ms integer quiet period before re-rendering while streaming
 
+---@class Crust.Config.Prompt
+---@field system_prompt? string|fun(): string? replaces pi's own system prompt
+---@field append? string|string[]|fun(): string|string[]|nil appended after crust's block, text or a file path
+---@field include_defaults boolean prepend crust's own instructions to `append`
+
 ---@class Crust.Config
 ---@field bin string
+---@field prompt Crust.Config.Prompt
 ---@field log Crust.Config.Log
 ---@field render_markdown Crust.Config.RenderMarkdown
 ---@field icons Crust.Config.Icons status icons shown before a tool title
@@ -39,6 +45,11 @@ M.defaults = {
 	log = {
 		enabled = false,
 		dir = vim.fn.stdpath("state") .. "/crust",
+	},
+	prompt = {
+		system_prompt = nil,
+		append = nil,
+		include_defaults = true,
 	},
 	render_markdown = {
 		enabled = function()
