@@ -3,17 +3,17 @@
 --- When `config.extension.enabled` is true, crust starts (or reuses) a neovim
 --- server socket and passes the bundled pi extension with `-e`. The extension
 --- talks back over `nvim --server <socket> --remote-expr`, calling
---- `crust.integrations.extension`, so the LLM sees the editor state without the
---- user having to paste anything.
+--- `crust.extension.tools`, so the LLM sees the editor state without the user
+--- having to paste anything.
 ---
 --- Everything here is about the wiring: the socket, the CLI args and the
 --- environment. What the LLM can actually call lives in
---- `crust.integrations.extension`.
+--- `crust.extension.tools`.
 
 ---@class Crust.Extension
 local M = {}
 
-local Tools = require("crust.integrations.extension")
+local Tools = require("crust.extension.tools")
 
 --- Environment variable the bundled extension reads the socket from.
 M.SERVER_ENV = "CRUST_NVIM_SERVER"
@@ -50,7 +50,7 @@ local function random()
 end
 
 --- Secret shared with the bundled extension, generated once per session.
---- Every call into `crust.integrations.extension` must carry it, so the socket
+--- Every call into `crust.extension.tools` must carry it, so the socket
 --- is useless to anything that did not get the token at startup.
 ---@return string
 function M.token()
@@ -95,7 +95,7 @@ end
 ---@return string
 local function plugin_root()
 	local source = debug.getinfo(1, "S").source:sub(2)
-	return vim.fn.fnamemodify(source, ":h:h:h")
+	return vim.fn.fnamemodify(source, ":h:h:h:h")
 end
 
 ---@param cfg? Crust.Config.Extension defaults to `config.get().extension`

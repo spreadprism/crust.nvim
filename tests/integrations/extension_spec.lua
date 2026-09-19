@@ -1,4 +1,4 @@
-local Tools = require("crust.integrations.extension")
+local Tools = require("crust.extension.tools")
 local Extension = require("crust.extension")
 
 --- Call a tool the way pi does: name plus a json object string.

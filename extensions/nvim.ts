@@ -3,15 +3,15 @@
  * when `config.extension.enabled` is true.
  *
  * It talks back to the neovim instance that spawned pi over the socket in
- * CRUST_NVIM_SERVER, calling `crust.integrations.extension` functions with
+ * CRUST_NVIM_SERVER, calling `crust.extension.tools` functions with
  * `nvim --server <socket> --remote-expr`. The lua side of the wiring lives in
  * `lua/crust/extension.lua`.
  *
  * This file knows nothing about the individual tools. At startup it asks
- * neovim for `require('crust.integrations.extension').manifest()`, a json
+ * neovim for `require('crust.extension.tools').manifest()`, a json
  * array of tool specs, registers each one, and routes every call back to
  * `...call(name, args)`. Adding or changing a tool is a lua-only change under
- * `lua/crust/integrations/extension/`.
+ * `lua/crust/extension/`.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -114,7 +114,7 @@ export default function (pi: ExtensionAPI) {
   }
 
   const manifest = remoteSync(
-    `require('crust.integrations.extension').manifest('${quote(TOKEN)}')`,
+    `require('crust.extension.tools').manifest('${quote(TOKEN)}')`,
   );
   if (!manifest) return;
 
@@ -134,7 +134,7 @@ export default function (pi: ExtensionAPI) {
   ): Promise<string | null> {
     const args = quote(JSON.stringify(params ?? {}));
     return remote(
-      `require('crust.integrations.extension').call('${quote(TOKEN!)}', '${quote(name)}', '${args}')`,
+      `require('crust.extension.tools').call('${quote(TOKEN!)}', '${quote(name)}', '${args}')`,
       signal,
     );
   }

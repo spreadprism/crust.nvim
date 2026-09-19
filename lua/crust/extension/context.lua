@@ -21,6 +21,7 @@
 
 ---@class Crust.Context
 ---@field cwd string
+---@field branch string? checked out git branch, omitted outside a repository
 ---@field buffers Crust.Context.Buffer[] loaded and listed, panels excluded
 ---@field current Crust.Context.Buffer? omitted when only chat panels are open
 ---@field cursor Crust.Context.Cursor? omitted with `current`
@@ -102,6 +103,40 @@ local function setup()
 	})
 end
 
+--- Checked out branch of the repository `dir` lives in, read straight from
+--- `.git/HEAD` so no git process is spawned. Returns the short commit hash
+--- when the head is detached, nil outside a repository.
+---@param dir string
+---@return string?
+local function branch(dir)
+	local git = vim.fs.find(".git", { path = dir, upward = true })[1]
+	if not git then
+		return nil
+	end
+
+	-- A worktree or submodule has a `.git` file pointing at the real gitdir.
+	if vim.fn.isdirectory(git) == 0 then
+		local pointer = (vim.fn.readfile(git)[1] or ""):match("^gitdir: (.+)$")
+		if not pointer then
+			return nil
+		end
+		git = vim.startswith(pointer, "/") and pointer or vim.fs.joinpath(vim.fs.dirname(git), pointer)
+		git = vim.fs.normalize(git)
+	end
+
+	local ok, head = pcall(vim.fn.readfile, vim.fs.joinpath(git, "HEAD"), "", 1)
+	if not ok then
+		return nil
+	end
+
+	local ref = head[1]
+	if not ref or ref == "" then
+		return nil
+	end
+
+	return ref:match("^ref: refs/heads/(.+)$") or ref:sub(1, 7)
+end
+
 ---@param buf integer
 ---@return Crust.Context.Buffer
 local function buffer_info(buf)
@@ -127,9 +162,12 @@ local function ctx()
 		end
 	end
 
+	local cwd = vim.fn.getcwd()
+
 	---@type Crust.Context
 	local context = {
-		cwd = vim.fn.getcwd(),
+		cwd = cwd,
+		branch = branch(cwd),
 		buffers = buffers,
 	}
 
@@ -143,12 +181,12 @@ local function ctx()
 	return context
 end
 
----@type Crust.Integrations.Extension.Tool[]
+---@type Crust.Extension.Tool[]
 return {
 	{
 		name = "nvim_context",
 		label = "Neovim Context",
-		description = "Current neovim state: cwd, listed buffers, the file the user is working in and the cursor position.",
+		description = "Current neovim state: cwd, git branch, listed buffers, the file the user is working in and the cursor position.",
 		promptSnippet = "Inspect the current neovim editor state",
 		promptGuidelines = {
 			"Use nvim_context when the user says 'this file', 'here' or 'the current buffer'.",

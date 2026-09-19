@@ -58,7 +58,7 @@ local function diagnostics(path)
 	return { scope = scope, diagnostics = items }
 end
 
----@type Crust.Integrations.Extension.Tool[]
+---@type Crust.Extension.Tool[]
 return {
 	{
 		name = "nvim_diagnostics",

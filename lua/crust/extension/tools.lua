@@ -6,7 +6,8 @@
 --- `extensions/nvim.ts` knows nothing about the individual tools, so adding one
 --- is a lua-only change.
 ---
---- Both entry points take the session token generated in `crust.extension`.
+--- Both entry points take the session token generated in `crust.extension`
+--- (`crust/extension/init.lua`).
 --- The socket is reachable by anything on the machine, the token is not: it is
 --- handed to the extension once, in a file it deletes on startup.
 ---
@@ -14,7 +15,7 @@
 --- of which returns nothing but an array of tools. This file only gathers them.
 --- The connection to pi itself lives in `crust.extension`.
 
----@class Crust.Integrations.Extension.Tool
+---@class Crust.Extension.Tool
 ---@field name string tool name as the LLM sees it
 ---@field label? string short label for the chat ui
 ---@field description string what the tool does
@@ -25,24 +26,24 @@
 ---@field setup? fun() state the tool needs, run once from `crust.extension`
 ---@field handler fun(args: table): table the result, encoded as json for pi
 
----@class Crust.Integrations.Extension
+---@class Crust.Extension.Tools
 local M = {}
 
---- Sibling modules that each return a `Crust.Integrations.Extension.Tool[]`.
+--- Sibling modules that each return a `Crust.Extension.Tool[]`.
 ---@type string[]
 local SOURCES = {
 	"context",
 	"lsp",
 }
 
----@type Crust.Integrations.Extension.Tool[]
+---@type Crust.Extension.Tool[]
 local TOOLS = {}
 for _, source in ipairs(SOURCES) do
-	vim.list_extend(TOOLS, require("crust.integrations.extension." .. source))
+	vim.list_extend(TOOLS, require("crust.extension." .. source))
 end
 
 ---@param name string
----@return Crust.Integrations.Extension.Tool?
+---@return Crust.Extension.Tool?
 local function find(name)
 	for _, tool in ipairs(TOOLS) do
 		if tool.name == name then
