@@ -50,17 +50,27 @@ function M.find_trigger(line, col, trigger)
 	return nil
 end
 
+--- Most items any front end gets. A popup cannot show more, and building
+--- thousands of tables on every keystroke is what makes completion feel
+--- like a freeze.
+M.MAX_ITEMS = 200
+
 --- Files matching `prefix`, with directories collapsed into one entry so a
---- deep tree does not flood the popup.
+--- deep tree does not flood the popup. Stops at `MAX_ITEMS`.
 ---@param prefix string text typed after `@`
 ---@param make_item fun(path: string, kind: "file"|"dir", fuzzy: boolean): table
 ---@return table[]
 function M.complete_files(prefix, make_item)
+	local paths = Files.list()
 	local items = {}
 	local seen_dirs = {}
 	local matched = {}
 
-	for _, path in ipairs(Files.list()) do
+	for _, path in ipairs(paths) do
+		if #items >= M.MAX_ITEMS then
+			return items
+		end
+
 		if prefix == "" or path:sub(1, #prefix) == prefix then
 			matched[path] = true
 
@@ -79,7 +89,10 @@ function M.complete_files(prefix, make_item)
 	end
 
 	if prefix ~= "" then
-		for _, path in ipairs(Files.list()) do
+		for _, path in ipairs(paths) do
+			if #items >= M.MAX_ITEMS then
+				return items
+			end
 			if not matched[path] and M.fuzzy_match(prefix, path) then
 				items[#items + 1] = make_item(path, "file", true)
 			end

@@ -101,6 +101,17 @@ describe("completion", function()
 			stub_files({ "README.md", "justfile" })
 			assert.are.equal(2, #Completion.complete_files("", item))
 		end)
+
+		it("stops at MAX_ITEMS instead of building the whole tree", function()
+			local paths = {}
+			for index = 1, Completion.MAX_ITEMS * 3 do
+				paths[index] = "file" .. index .. ".lua"
+			end
+			stub_files(paths)
+
+			assert.are.equal(Completion.MAX_ITEMS, #Completion.complete_files("", item))
+			assert.are.equal(Completion.MAX_ITEMS, #Completion.complete_files("file", item))
+		end)
 	end)
 
 	describe("complete_commands", function()
@@ -139,6 +150,156 @@ describe("completion", function()
 		it("lists everything for an empty prefix", function()
 			assert.are.equal(3, #Completion.complete_commands("", item))
 		end)
+	end)
+end)
+
+describe("completion.files", function()
+	local dir
+
+	before_each(function()
+		Files.invalidate()
+		dir = vim.fn.tempname()
+		vim.fn.mkdir(dir .. "/lua/crust", "p")
+		vim.fn.writefile({ "" }, dir .. "/README.md")
+		vim.fn.writefile({ "" }, dir .. "/lua/crust/init.lua")
+	end)
+
+	after_each(function()
+		Files.invalidate()
+		vim.fn.delete(dir, "rf")
+	end)
+
+	---@param cwd string
+	---@return string[]
+	local function scan(cwd)
+		local files
+		Files.ensure(cwd, function(result)
+			files = result
+		end)
+		vim.wait(5000, function()
+			return files ~= nil
+		end, 10)
+		return assert(files, "the scan never finished")
+	end
+
+	it("answers instantly with an empty list before the first scan", function()
+		local started = vim.uv.hrtime()
+		assert.are.same({}, Files.list(dir))
+		-- No process may be waited on here: 50ms is orders of magnitude more
+		-- than a table lookup and far below a `git ls-files`.
+		assert.is_true((vim.uv.hrtime() - started) < 50e6)
+	end)
+
+	it("fills the cache in the background", function()
+		local files = scan(dir)
+		assert.is_true(vim.tbl_contains(files, "README.md"))
+		assert.is_true(vim.tbl_contains(files, "lua/crust/init.lua"))
+		assert.are.same(files, Files.list(dir))
+	end)
+
+	it("reuses a fresh listing without rescanning", function()
+		scan(dir)
+		vim.fn.writefile({ "" }, dir .. "/late.md")
+
+		assert.is_false(vim.tbl_contains(scan(dir), "late.md"))
+	end)
+
+	it("walks the tree when no lister is installed", function()
+		local commands = Files.commands
+		Files.commands = function()
+			return {}
+		end
+
+		local files = scan(dir)
+		Files.commands = commands
+
+		assert.is_true(vim.tbl_contains(files, "README.md"))
+		assert.is_true(vim.tbl_contains(files, "lua/crust/init.lua"))
+	end)
+
+	it("falls back to the built-in listers without snacks", function()
+		-- snacks.nvim is not installed in the test runtime, so its command
+		-- lookup must not leak into the list.
+		assert.are.same(Files.COMMANDS, Files.commands())
+	end)
+
+	it("fills the cache while the scan is still running", function()
+		local commands = Files.commands
+		-- One path per line, with a pause in the middle, so the first chunk
+		-- has to be visible before the process exits.
+		Files.commands = function()
+			return { { "sh", "-c", "printf 'early.lua\\n'; sleep 0.4; printf 'late.lua\\n'" } }
+		end
+
+		local done = false
+		Files.ensure(dir, function()
+			done = true
+		end)
+
+		-- Partial results are readable long before the callback fires.
+		vim.wait(2000, function()
+			return #Files.list(dir) > 0
+		end, 10)
+		assert.are.same({ "early.lua" }, Files.list(dir))
+		assert.is_false(done)
+		assert.is_true(Files.scanning(dir))
+
+		vim.wait(5000, function()
+			return done
+		end, 10)
+		Files.commands = commands
+
+		assert.are.same({ "early.lua", "late.lua" }, Files.list(dir))
+		assert.is_false(Files.scanning(dir))
+	end)
+
+	it("joins a path split across two chunks", function()
+		local commands = Files.commands
+		Files.commands = function()
+			return { { "sh", "-c", "printf 'lua/cru'; sleep 0.3; printf 'st/init.lua\\n'" } }
+		end
+
+		local files = scan(dir)
+		Files.commands = commands
+
+		assert.are.same({ "lua/crust/init.lua" }, files)
+	end)
+
+	it("keeps a last line without a trailing newline", function()
+		local commands = Files.commands
+		Files.commands = function()
+			return { { "sh", "-c", "printf 'a.lua\\nb.lua'" } }
+		end
+
+		local files = scan(dir)
+		Files.commands = commands
+
+		assert.are.same({ "a.lua", "b.lua" }, files)
+	end)
+
+	it("falls through to the next lister when one fails", function()
+		local commands = Files.commands
+		Files.commands = function()
+			return {
+				{ "sh", "-c", "exit 2" },
+				{ "sh", "-c", "printf 'fallback.lua\\n'" },
+			}
+		end
+
+		local files = scan(dir)
+		Files.commands = commands
+
+		assert.are.same({ "fallback.lua" }, files)
+	end)
+
+	it("caps the listing at MAX_FILES", function()
+		local max = Files.MAX_FILES
+		Files.MAX_FILES = 1
+
+		local files = scan(dir)
+		Files.MAX_FILES = max
+
+		assert.are.equal(1, #files)
 	end)
 end)
 

@@ -70,25 +70,44 @@ local function file_item(path, kind, fuzzy)
 	}
 end
 
+---@param items table[]
+---@return table
+local function response(items)
+	-- The list depends on the typed prefix, so blink must re-query instead of
+	-- filtering a cached response.
+	return { items = items, is_incomplete_forward = true, is_incomplete_backward = true }
+end
+
 ---@param ctx table blink completion context
 ---@param callback fun(response: table)
+---@return fun() cancel
 function source:get_completions(ctx, callback)
 	local context = Completion.context(ctx.line, ctx.cursor[2], ctx.cursor[1])
 
-	local items = {}
-	if context and context.kind == "command" then
-		items = Completion.complete_commands(context.prefix, command_item)
-	elseif context and context.kind == "file" then
-		items = Completion.complete_files(context.prefix, file_item)
+	if not context then
+		callback(response({}))
+		return function() end
 	end
 
-	-- The list depends on the typed prefix, so blink must re-query instead of
-	-- filtering a cached response.
-	callback({
-		items = items,
-		is_incomplete_forward = #items > 0,
-		is_incomplete_backward = #items > 0,
-	})
+	if context.kind == "command" then
+		callback(response(Completion.complete_commands(context.prefix, command_item)))
+		return function() end
+	end
+
+	-- Answer from the cache right away, so the popup never waits on a file
+	-- scan, and send a second answer if the refresh brings new paths.
+	callback(response(Completion.complete_files(context.prefix, file_item)))
+
+	local cancelled = false
+	Files.ensure(nil, function()
+		if not cancelled then
+			callback(response(Completion.complete_files(context.prefix, file_item)))
+		end
+	end)
+
+	return function()
+		cancelled = true
+	end
 end
 
 return source

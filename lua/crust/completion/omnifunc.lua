@@ -47,13 +47,19 @@ function M.completefunc(findstart, base)
 	if context.kind == "command" then
 		return Completion.complete_commands(base:gsub("^/", ""), command_item)
 	end
+
+	-- Kick off a refresh for the next invocation: completefunc is synchronous
+	-- and must answer from the cache.
+	require("crust.completion.files").ensure()
 	return Completion.complete_files((base:gsub("^@", "")), file_item)
 end
 
---- Wire `completefunc` on a crust input buffer.
+--- Wire `completefunc` on a crust input buffer and warm the file cache, so
+--- the first `@` already has something to show.
 ---@param buf integer
 function M.attach(buf)
 	vim.bo[buf].completefunc = "v:lua.require'crust.completion.omnifunc'.completefunc"
+	require("crust.completion.files").ensure()
 end
 
 return M
