@@ -132,36 +132,19 @@ end
 function Chat:open(opts)
 	opts = opts or {}
 
-	if self:is_visible() then
-		self._input:focus()
-
-		if opts.session then
-			self:load_session(opts.session)
-		elseif opts.continue and not self._resumed then
-			self:continue()
-		end
-		return
-	end
+	-- The panel comes up first and the conversation is replayed into it: pi's
+	-- startup plus the switch_session/get_messages round trip is far too slow
+	-- to hold the windows back on, `load_session` shows "Loading session…"
+	-- in the status line meanwhile.
+	self:_show()
 
 	-- Only the first open resumes: later ones just focus the chat, or a
 	-- repeated keymap would walk further back through the history.
-	local resume = opts.session or (opts.continue and not self._resumed and self:_continue_path() or nil)
-	if not resume then
-		self:_show()
-		return
+	if opts.session then
+		self:load_session(opts.session)
+	elseif opts.continue and not self._resumed then
+		self:continue()
 	end
-
-	-- Fill the buffer before the windows exist, so the panel is never shown
-	-- half written. Both buffers are alive from `Chat.new` on, so the replay
-	-- does not need a window.
-	if not self:_ensure_running() then
-		self:_show()
-		return
-	end
-
-	self:load_session(resume, function()
-		self:_show()
-	end)
 end
 
 --- Open both windows on the buffers as they are.

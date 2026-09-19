@@ -141,8 +141,23 @@ function M.last(opts)
 	opts = opts or {}
 	local exclude = opts.exclude and vim.fs.normalize(opts.exclude) or nil
 
-	for _, session in ipairs(M.list(opts.cwd)) do
-		if not exclude or vim.fs.normalize(session.path) ~= exclude then
+	-- Sorted by mtime first so only the candidates are read: parsing every
+	-- file here would stall the chat panel on big histories.
+	---@type { path: string, modified: integer }[]
+	local files = {}
+	for _, path in ipairs(vim.fn.glob(M.dir(opts.cwd) .. "/*.jsonl", false, true)) do
+		if not exclude or vim.fs.normalize(path) ~= exclude then
+			files[#files + 1] = { path = path, modified = vim.fn.getftime(path) }
+		end
+	end
+
+	table.sort(files, function(a, b)
+		return a.modified > b.modified
+	end)
+
+	for _, file in ipairs(files) do
+		local session = M.parse(file.path)
+		if session then
 			return session
 		end
 	end
