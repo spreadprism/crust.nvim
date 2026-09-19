@@ -3,10 +3,8 @@
 --- One file per session under `config.log.dir`, named
 --- `crust-<session>.log`, with one line per message:
 ---
----   U - {"type":"prompt",...} 2024-03-07T09:05:11.412
----   P - {"type":"response",...} 2024-03-07T09:05:11.930
----
---- `U` is what the editor sent to pi, `P` is what pi sent back.
+---   {"type":"prompt",...} 2024-03-07T09:05:11.412
+---   {"type":"response",...} 2024-03-07T09:05:11.930
 
 ---@class Crust.Log
 ---@field private _dir string
@@ -72,26 +70,25 @@ local function now()
 end
 
 --- Append one transcript line.
----@param direction "U"|"P" U = editor to pi, P = pi to editor
 ---@param payload string raw json line
-function Log:write(direction, payload)
+function Log:write(payload)
 	local file = self:_open()
 	if not file then
 		return
 	end
 
-	file:write(direction .. " - " .. (payload:gsub("%s+$", "")) .. " " .. now() .. "\n")
+	file:write((payload:gsub("%s+$", "")) .. " " .. now() .. "\n")
 	file:flush()
 end
 
 ---@param payload string
 function Log:sent(payload)
-	self:write("U", payload)
+	self:write(payload)
 end
 
 ---@param payload string
 function Log:received(payload)
-	self:write("P", payload)
+	self:write(payload)
 end
 
 --- Adopt pi's real session id, moving any lines already written.

@@ -7,7 +7,7 @@
 ---@field log? boolean|string false disables the transcript, a string names the session
 ---@field prompt? Crust.Config.Prompt system prompt overrides, defaults to `config.prompt`
 ---@field context? Crust.Config.Context context overrides, defaults to `config.context`
----@field mcp? Crust.Config.Mcp neovim integration overrides, defaults to `config.mcp`
+---@field extension? Crust.Config.Extension neovim integration overrides, defaults to `config.extension`
 
 ---@class Crust.Pi Pi instance process that manages everything
 ---@field opts Crust.Pi.Opts
@@ -21,7 +21,7 @@ Pi.__index = Pi
 
 local Command = require("crust.pi.rpc")
 local Log = require("crust.log")
-local Mcp = require("crust.integrations.mcp_server")
+local Extension = require("crust.integrations.extension")
 local Prompt = require("crust.prompt")
 
 local PING_TIMEOUT_MS = 5000
@@ -68,7 +68,7 @@ function Pi:_command()
 	end
 	vim.list_extend(cmd, Prompt.args(self.opts.prompt))
 	vim.list_extend(cmd, Prompt.context_args(self.opts.context))
-	vim.list_extend(cmd, Mcp.args(self.opts.mcp))
+	vim.list_extend(cmd, Extension.args(self.opts.extension))
 	vim.list_extend(cmd, { "--mode", "rpc" })
 	return cmd
 end
@@ -77,7 +77,7 @@ end
 ---@private
 ---@return table<string, string>?
 function Pi:_env()
-	local env = Mcp.env(self.opts.mcp)
+	local env = Extension.env(self.opts.extension)
 	return next(env) and env or nil
 end
 

@@ -1,40 +1,40 @@
 local Config = require("crust.config")
-local Mcp = require("crust.integrations.mcp_server")
+local Extension = require("crust.integrations.extension")
 
-describe("mcp_server", function()
+describe("extension", function()
 	after_each(function()
 		Config.config = nil
 	end)
 
 	it("is off by default", function()
-		assert.False(Mcp.enabled())
-		assert.are.same({}, Mcp.args())
-		assert.are.same({}, Mcp.env())
+		assert.False(Extension.enabled())
+		assert.are.same({}, Extension.args())
+		assert.are.same({}, Extension.env())
 	end)
 
 	it("passes the bundled extension when enabled", function()
-		local args = Mcp.args({ enabled = true })
+		local args = Extension.args({ enabled = true })
 		assert.are.equal("-e", args[1])
 		assert.are.equal(1, vim.fn.filereadable(args[2]))
-		assert.truthy(args[2]:match("extensions/mcp%-server%.ts$"))
+		assert.truthy(args[2]:match("extensions/nvim%.ts$"))
 	end)
 
 	it("warns and passes nothing for a missing extension", function()
-		local args = Mcp.args({ enabled = true, extension = "/tmp/crust-no-such-extension.ts" })
+		local args = Extension.args({ enabled = true, path = "/tmp/crust-no-such-extension.ts" })
 		assert.are.same({}, args)
 	end)
 
 	it("exports the socket in the process environment", function()
-		local env = Mcp.env({ enabled = true, server = "/tmp/crust-test.sock" })
-		assert.are.same({ [Mcp.SERVER_ENV] = "/tmp/crust-test.sock" }, env)
+		local env = Extension.env({ enabled = true, server = "/tmp/crust-test.sock" })
+		assert.are.same({ [Extension.SERVER_ENV] = "/tmp/crust-test.sock" }, env)
 	end)
 
 	it("starts a neovim server when there is none configured", function()
-		local address = Mcp.server({ enabled = true })
+		local address = Extension.server({ enabled = true })
 		assert.is_string(address)
 		assert.is_true(#address > 0)
 		-- Cached, so a second chat reuses the same socket.
-		assert.are.equal(address, Mcp.server({ enabled = true }))
+		assert.are.equal(address, Extension.server({ enabled = true }))
 	end)
 
 	describe("snapshot", function()
@@ -43,7 +43,7 @@ describe("mcp_server", function()
 			vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "one", "two" })
 			vim.api.nvim_win_set_buf(0, buf)
 
-			local snapshot = vim.json.decode(Mcp.snapshot())
+			local snapshot = vim.json.decode(Extension.snapshot())
 			assert.are.equal(vim.fn.getcwd(), snapshot.cwd)
 			assert.are.equal(buf, snapshot.current.buf)
 			assert.are.equal(2, snapshot.current.lines)
@@ -54,7 +54,7 @@ describe("mcp_server", function()
 
 	describe("diagnostics", function()
 		it("returns an empty list for an unknown file", function()
-			local result = vim.json.decode(Mcp.diagnostics("/tmp/crust-no-such-file.lua"))
+			local result = vim.json.decode(Extension.diagnostics("/tmp/crust-no-such-file.lua"))
 			assert.are.same({}, result.diagnostics)
 		end)
 
@@ -67,7 +67,7 @@ describe("mcp_server", function()
 			})
 
 			local found = false
-			for _, item in ipairs(vim.json.decode(Mcp.diagnostics()).diagnostics) do
+			for _, item in ipairs(vim.json.decode(Extension.diagnostics()).diagnostics) do
 				if item.message == "boom" then
 					found = true
 					assert.are.equal("ERROR", item.severity)

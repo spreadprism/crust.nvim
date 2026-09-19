@@ -1,11 +1,12 @@
 --- Optional integration that hands pi a view of this neovim instance.
 ---
---- When `config.mcp.enabled` is true, crust starts (or reuses) a neovim server
---- socket and passes a bundled pi extension with `-e`. The extension talks back
---- over `nvim --server <socket> --remote-expr`, calling the functions below, so
---- the LLM sees the editor state without the user having to paste anything.
+--- When `config.extension.enabled` is true, crust starts (or reuses) a neovim
+--- server socket and passes a bundled pi extension with `-e`. The extension
+--- talks back over `nvim --server <socket> --remote-expr`, calling the functions
+--- below, so the LLM sees the editor state without the user having to paste
+--- anything.
 
----@class Crust.Integrations.McpServer
+---@class Crust.Integrations.Extension
 local M = {}
 
 --- Environment variable the bundled extension reads the socket from.
@@ -21,13 +22,13 @@ local function plugin_root()
 	return vim.fn.fnamemodify(source, ":h:h:h:h")
 end
 
----@param cfg? Crust.Config.Mcp defaults to `config.get().mcp`
----@return Crust.Config.Mcp
+---@param cfg? Crust.Config.Extension defaults to `config.get().extension`
+---@return Crust.Config.Extension
 local function options(cfg)
-	return cfg or require("crust.config").get().mcp
+	return cfg or require("crust.config").get().extension
 end
 
----@param cfg? Crust.Config.Mcp
+---@param cfg? Crust.Config.Extension
 ---@return boolean
 function M.enabled(cfg)
 	cfg = options(cfg)
@@ -35,25 +36,25 @@ function M.enabled(cfg)
 end
 
 --- Path of the pi extension handed to `-e`, or nil when it is missing.
----@param cfg? Crust.Config.Mcp
+---@param cfg? Crust.Config.Extension
 ---@return string?
-function M.extension(cfg)
+function M.path(cfg)
 	cfg = options(cfg)
 
-	local path = cfg.extension or (plugin_root() .. "/extensions/mcp-server.ts")
+	local path = cfg.path or (plugin_root() .. "/extensions/nvim.ts")
 	path = vim.fn.fnamemodify(vim.fn.expand(path), ":p")
 	if vim.fn.filereadable(path) == 1 then
 		return path
 	end
 
-	vim.notify("crust: mcp extension not found: " .. path, vim.log.levels.WARN)
+	vim.notify("crust: pi extension not found: " .. path, vim.log.levels.WARN)
 	return nil
 end
 
 --- Address of the neovim socket the extension connects back to.
 --- Reuses `--listen`/`v:servername` when nvim already has one, otherwise starts
 --- a server on first call and keeps it for the rest of the session.
----@param cfg? Crust.Config.Mcp
+---@param cfg? Crust.Config.Extension
 ---@return string?
 function M.server(cfg)
 	cfg = options(cfg)
@@ -78,7 +79,7 @@ function M.server(cfg)
 
 	local ok, address = pcall(vim.fn.serverstart)
 	if not ok or address == "" then
-		vim.notify("crust: could not start a neovim server for the mcp integration", vim.log.levels.WARN)
+		vim.notify("crust: could not start a neovim server for the nvim extension integration", vim.log.levels.WARN)
 		return nil
 	end
 
@@ -87,23 +88,23 @@ function M.server(cfg)
 end
 
 --- Extra pi CLI args, empty when the integration is off or unusable.
----@param cfg? Crust.Config.Mcp
+---@param cfg? Crust.Config.Extension
 ---@return string[] args
 function M.args(cfg)
 	if not M.enabled(cfg) then
 		return {}
 	end
 
-	local extension = M.extension(cfg)
-	if not extension then
+	local path = M.path(cfg)
+	if not path then
 		return {}
 	end
 
-	return { "-e", extension }
+	return { "-e", path }
 end
 
 --- Environment for the pi process, empty when the integration is off.
----@param cfg? Crust.Config.Mcp
+---@param cfg? Crust.Config.Extension
 ---@return table<string, string> env
 function M.env(cfg)
 	if not M.enabled(cfg) then
@@ -119,7 +120,7 @@ function M.env(cfg)
 end
 
 --- Start the server early so the socket exists before the first chat.
----@param cfg? Crust.Config.Mcp
+---@param cfg? Crust.Config.Extension
 function M.setup(cfg)
 	if M.enabled(cfg) then
 		M.server(cfg)

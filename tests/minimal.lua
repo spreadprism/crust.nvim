@@ -6,6 +6,6 @@ vim.o.swapfile = false
 vim.o.number = true
 
 require("crust").setup({
-	mcp = { enabled = true },
+	extension = { enabled = true },
 })
 vim.notify("crust.nvim loaded — try :Crust chat", vim.log.levels.INFO)

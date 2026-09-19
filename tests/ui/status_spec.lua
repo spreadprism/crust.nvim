@@ -11,7 +11,7 @@ local function rendered(status, width)
 	if not status:text() then
 		return ""
 	end
-	return (status:line_for(width or 40):gsub("%\s+$", ""))
+	return (status:line_for(width or 40):gsub("%s+$", ""))
 end
 
 --- Highlight groups of the bar, in order.
@@ -81,7 +81,7 @@ describe("ui.chat.status", function()
 			status:set("Thinking…")
 			assert.is_true(status:is_running())
 			assert.are.equal("X  Thinking…", status:line())
-			assert.are.equal(" X  Thinking…", rendered(status):match("^(.-)%s%s+"))
+			assert.is_truthy(vim.startswith(rendered(status), " X  Thinking…"))
 			assert.is_truthy(rendered(status):find("<C-c> to cancel", 1, true))
 		end)
 
@@ -192,7 +192,7 @@ describe("ui.chat.status", function()
 			line:set("busy")
 			local text = line:line_for(40)
 			assert.are.equal(40, vim.fn.strdisplaywidth(text))
-			assert.is_truthy(text:find("<C-c> to cancel $"))
+			assert.are.equal("<C-c> to cancel ", text:sub(-16))
 		end)
 
 		it("highlights the icon, text, elapsed time and hint apart", function()
@@ -238,7 +238,8 @@ describe("ui.chat.status", function()
 			status:set("busy")
 			assert.are.equal("", status:hint())
 			assert.is_falsy(rendered(status):find("to cancel", 1, true))
-			assert.are.equal("%=", rendered(status):sub(-2))
+			-- Nothing on the right side, so the bar ends with the elapsed time.
+			assert.is_truthy(rendered(status):find("for %d+s$"))
 		end)
 	end)
 
