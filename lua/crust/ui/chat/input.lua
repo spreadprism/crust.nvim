@@ -21,6 +21,9 @@ function Input.new(on_submit)
 	self._win = nil
 	self._on_submit = on_submit
 
+	-- `<C-x><C-u>` completes @mentions and /commands without blink.cmp.
+	require("crust.completion.omnifunc").attach(self._buf)
+
 	vim.keymap.set({ "n", "i" }, "<CR>", function()
 		self:submit()
 	end, { buffer = self._buf, desc = "crust: send" })

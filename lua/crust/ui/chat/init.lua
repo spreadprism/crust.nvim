@@ -175,6 +175,9 @@ function Chat:_show()
 	self._output:follow()
 	self._input:focus()
 	self:refresh_session()
+	-- Slash commands come from the session, so they are fetched once the
+	-- process is up and again whenever the session changes.
+	require("crust.completion.commands").fetch(self._pi)
 end
 
 --- Closing one panel closes the other: the two windows are one unit.
@@ -409,6 +412,7 @@ function Chat:load_session(path, callback)
 		self._resumed = true
 		self:clear()
 		self:refresh_session()
+		require("crust.completion.commands").fetch(self._pi)
 
 		local _, messages_err = self._pi:send(Command.get_messages(), function(response)
 			if response.success == false then

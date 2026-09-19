@@ -10,6 +10,7 @@ Because [PI](https://pi.dev) needs a Crust
 - Neovim >= 0.13
 - `pi` on `$PATH` (configurable via `bin`)
 - [snacks.nvim](https://github.com/folke/snacks.nvim) (optional, session picker with delete)
+- [blink.cmp](https://github.com/Saghen/blink.cmp) (optional, popup completion in the chat input)
 - [plenary.nvim](https://github.com/nvim-lua/plenary.nvim) (tests only)
 
 ## Commands
@@ -34,6 +35,25 @@ require("crust").new_session() -- fresh session, same windows
 require("crust").sessions() -- picker
 require("crust").rename_session("bug hunt")
 require("crust.sessions").list() -- Crust.Session[], newest first
+```
+
+## Completion
+
+The chat input completes `@path` mentions against the project files and
+`/commands` against pi's command list. `<C-x><C-u>` works out of the box;
+with blink.cmp, register the shipped source:
+
+```lua
+require("blink.cmp").setup({
+  sources = {
+    per_filetype = {
+      crust_input = { "crust" },
+    },
+    providers = {
+      crust = { name = "Crust", module = "crust.completion.blink" },
+    },
+  },
+})
 ```
 
 ```lua
