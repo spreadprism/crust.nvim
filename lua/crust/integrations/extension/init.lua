@@ -9,6 +9,10 @@
 ---@class Crust.Integrations.Extension
 local M = {}
 
+local Context = require("crust.integrations.extension.context")
+local Lsp = require("crust.integrations.extension.lsp")
+local Tools = require("crust.integrations.extension.tools")
+
 --- Environment variable the bundled extension reads the socket from.
 M.SERVER_ENV = "CRUST_NVIM_SERVER"
 
@@ -19,7 +23,7 @@ local socket = nil
 ---@return string
 local function plugin_root()
 	local source = debug.getinfo(1, "S").source:sub(2)
-	return vim.fn.fnamemodify(source, ":h:h:h:h")
+	return vim.fn.fnamemodify(source, ":h:h:h:h:h")
 end
 
 ---@param cfg? Crust.Config.Extension defaults to `config.get().extension`
@@ -119,75 +123,46 @@ function M.env(cfg)
 	return { [M.SERVER_ENV] = server }
 end
 
---- Start the server early so the socket exists before the first chat.
+--- Start the server early so the socket exists before the first chat, and
+--- begin tracking the window the user works in.
 ---@param cfg? Crust.Config.Extension
 function M.setup(cfg)
 	if M.enabled(cfg) then
 		M.server(cfg)
+		Context.setup()
 	end
 end
 
----@param buf integer
----@return table
-local function buffer_info(buf)
-	local name = vim.api.nvim_buf_get_name(buf)
-	return {
-		buf = buf,
-		path = name ~= "" and vim.fn.fnamemodify(name, ":~:.") or nil,
-		filetype = vim.bo[buf].filetype,
-		modified = vim.bo[buf].modified,
-		lines = vim.api.nvim_buf_line_count(buf),
-	}
-end
-
---- Everything the extension injects as context: cwd, listed buffers, and the
---- cursor position of the window the user was last in.
+--- Editor context: cwd, listed buffers, and the cursor position.
+--- Lives in `crust.integrations.extension.context`, re-exported so the
+--- extension keeps calling a single module over `--remote-expr`.
 ---@return string json
-function M.snapshot()
-	local buffers = {}
-	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-		if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].buflisted then
-			buffers[#buffers + 1] = buffer_info(buf)
-		end
-	end
-
-	local win = vim.api.nvim_get_current_win()
-	local cursor = vim.api.nvim_win_get_cursor(win)
-	local current = vim.api.nvim_win_get_buf(win)
-
-	return vim.json.encode({
-		cwd = vim.fn.getcwd(),
-		current = buffer_info(current),
-		cursor = { line = cursor[1], col = cursor[2] + 1 },
-		buffers = buffers,
-	})
+function M.ctx()
+	return Context.ctx()
 end
 
 --- Diagnostics of one buffer, or of every loaded buffer when `path` is nil.
+--- Lives in `crust.integrations.extension.lsp`, re-exported the same way.
 ---@param path? string
 ---@return string json
 function M.diagnostics(path)
-	local buf = nil
-	if type(path) == "string" and path ~= "" then
-		buf = vim.fn.bufnr(vim.fn.fnamemodify(vim.fn.expand(path), ":p"))
-		if buf == -1 then
-			return vim.json.encode({ diagnostics = {} })
-		end
-	end
+	return Lsp.diagnostics(path)
+end
 
-	local items = {}
-	for _, diagnostic in ipairs(vim.diagnostic.get(buf)) do
-		items[#items + 1] = {
-			path = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(diagnostic.bufnr), ":~:."),
-			line = diagnostic.lnum + 1,
-			col = diagnostic.col + 1,
-			severity = vim.diagnostic.severity[diagnostic.severity],
-			source = diagnostic.source,
-			message = diagnostic.message,
-		}
-	end
+--- Json manifest of every tool the extension should register.
+--- Declared in `crust.integrations.extension.tools`, which is the only file to
+--- touch when adding a tool.
+---@return string json
+function M.tools()
+	return Tools.manifest()
+end
 
-	return vim.json.encode({ diagnostics = items })
+--- Run one of the tools from the manifest.
+---@param name string
+---@param args? string json object of arguments
+---@return string json
+function M.call(name, args)
+	return Tools.call(name, args)
 end
 
 return M
