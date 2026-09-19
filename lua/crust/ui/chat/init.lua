@@ -10,6 +10,7 @@
 ---@field private _augroup integer?
 ---@field private _closing boolean
 ---@field private _session Crust.Chat.Session
+---@field private _resumed boolean a past session was loaded into this chat
 local Chat = {}
 Chat.__index = Chat
 
@@ -45,6 +46,7 @@ function Chat.new(opts)
 	self._closing = false
 	self._streaming = false
 	self._session = {}
+	self._resumed = false
 	self._output = Output.new()
 	self._tools = Tools.new()
 	self._status = Status.new(self._output)
@@ -132,27 +134,58 @@ function Chat:open(opts)
 
 	if self:is_visible() then
 		self._input:focus()
-	else
-		self._output:open(math.floor(vim.o.columns * WIDTH_RATIO))
-		self._input:open()
-		self:_watch_windows()
-		self._status:render()
 
-		local ok, err = self._pi:connect()
-		if not ok then
-			self._output:error(tostring(err))
-			return
+		if opts.session then
+			self:load_session(opts.session)
+		elseif opts.continue and not self._resumed then
+			self:continue()
 		end
+		return
+	end
 
+	-- Only the first open resumes: later ones just focus the chat, or a
+	-- repeated keymap would walk further back through the history.
+	local resume = opts.session or (opts.continue and not self._resumed and self:_continue_path() or nil)
+	if not resume then
+		self:_show()
+		return
+	end
+
+	-- Fill the buffer before the windows exist, so the panel is never shown
+	-- half written. Both buffers are alive from `Chat.new` on, so the replay
+	-- does not need a window.
+	if not self:_ensure_running() then
+		self:_show()
+		return
+	end
+
+	self:load_session(resume, function()
+		self:_show()
+	end)
+end
+
+--- Open both windows on the buffers as they are.
+---@private
+function Chat:_show()
+	if self:is_visible() then
 		self._input:focus()
-		self:refresh_session()
+		return
 	end
 
-	if opts.session then
-		self:load_session(opts.session)
-	elseif opts.continue then
-		self:continue()
+	self._output:open(math.floor(vim.o.columns * WIDTH_RATIO))
+	self._input:open()
+	self:_watch_windows()
+	self._status:render()
+
+	local ok, err = self._pi:connect()
+	if not ok then
+		self._output:error(tostring(err))
+		return
 	end
+
+	self._output:follow()
+	self._input:focus()
+	self:refresh_session()
 end
 
 --- Closing one panel closes the other: the two windows are one unit.
@@ -359,6 +392,7 @@ function Chat:load_session(path, callback)
 			return finish(false, "session switch was cancelled")
 		end
 
+		self._resumed = true
 		self:clear()
 		self:refresh_session()
 
@@ -384,18 +418,35 @@ end
 --- Load the most recent session of the cwd, like `pi --continue`.
 ---@param callback? fun(ok: boolean, err: string?)
 function Chat:continue(callback)
-	local Sessions = require("crust.sessions")
-	local session = Sessions.last({ exclude = self._session.file })
-
-	if not session then
-		vim.notify("crust: no previous session for " .. vim.fn.getcwd(), vim.log.levels.INFO)
+	local path = self:_continue_path()
+	if not path then
 		if callback then
 			callback(false, "no previous session")
 		end
 		return
 	end
 
-	self:load_session(session.path, callback)
+	self:load_session(path, callback)
+end
+
+--- Session `continue` would resume, nil (and a notification) when there is
+--- none.
+---@private
+---@return string?
+function Chat:_continue_path()
+	-- The live session is skipped while it is still the untouched one pi
+	-- created at startup. Once a session has been resumed it is the most
+	-- recent one, and continuing again has to land on it, not before it.
+	local session = require("crust.sessions").last({
+		exclude = not self._resumed and self._session.file or nil,
+	})
+
+	if not session then
+		vim.notify("crust: no previous session for " .. vim.fn.getcwd(), vim.log.levels.INFO)
+		return nil
+	end
+
+	return session.path
 end
 
 --- Start a fresh session in this chat, wiping the panel.
@@ -425,6 +476,9 @@ function Chat:new_session(callback)
 			return fail(event.error or "failed to start a new session")
 		end
 
+		-- A new session is the live one again, so `continue` may resume the
+		-- session it was started from.
+		self._resumed = false
 		self:clear()
 		self._input:clear()
 		self:refresh_session()

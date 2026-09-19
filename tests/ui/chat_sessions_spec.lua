@@ -170,6 +170,66 @@ describe("ui.chat sessions", function()
 			assert.are.equal(path, sent[1].sessionPath)
 		end)
 
+		it("resumes the same session when continued twice", function()
+			local dir = require("crust.sessions").dir()
+			vim.fn.mkdir(dir, "p")
+
+			---@param name string
+			---@param mtime integer
+			local function session(name, mtime)
+				local path = dir .. "/" .. name .. ".jsonl"
+				local file = assert(io.open(path, "w"))
+				file:write(
+					vim.json.encode({ type = "session", id = name, timestamp = "2026-09-19T10:00:00.000Z" }) .. "\n"
+				)
+				file:close()
+				vim.uv.fs_utime(path, mtime, mtime)
+				return path
+			end
+
+			session("older", 1000)
+			local newest = session("newest", 2000)
+
+			chat:continue()
+			answer("switch_session", { success = true })
+			-- pi now reports the resumed session as the live one.
+			chat:_on_event({
+				type = "response",
+				command = "get_state",
+				success = true,
+				data = { sessionId = "newest", sessionFile = newest },
+			})
+
+			chat:continue()
+
+			assert.are.equal(newest, sent[1].sessionPath)
+			assert.are.equal(newest, sent[#sent].sessionPath)
+		end)
+
+		it("only resumes on the first open, later ones just focus", function()
+			local dir = require("crust.sessions").dir()
+			vim.fn.mkdir(dir, "p")
+			local path = dir .. "/one.jsonl"
+			local file = assert(io.open(path, "w"))
+			file:write(
+				vim.json.encode({ type = "session", id = "one", timestamp = "2026-09-19T10:00:00.000Z" }) .. "\n"
+			)
+			file:close()
+
+			chat:open({ continue = true })
+			answer("switch_session", { success = true })
+			local switches = #vim.tbl_filter(function(command)
+				return command.type == "switch_session"
+			end, sent)
+
+			chat:open({ continue = true })
+			chat:close()
+
+			assert.are.equal(switches, #vim.tbl_filter(function(command)
+				return command.type == "switch_session"
+			end, sent))
+		end)
+
 		it("does nothing when the cwd has no sessions", function()
 			local ok, err
 			chat:continue(function(success, message)

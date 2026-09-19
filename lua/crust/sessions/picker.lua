@@ -120,7 +120,6 @@ function M.select(opts, on_choice)
 
 	local sessions = Sessions.list(opts.cwd)
 	if #sessions == 0 then
-		vim.notify("crust: no sessions for " .. (opts.cwd or vim.fn.getcwd()), vim.log.levels.INFO)
 		on_choice(nil)
 		return
 	end

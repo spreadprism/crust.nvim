@@ -108,6 +108,25 @@ describe("sessions", function()
 		end)
 	end)
 
+	describe("exists", function()
+		it("matches an id, a name or a file stem", function()
+			local dir = Sessions.dir(cwd)
+			write_session(dir, "abc123.jsonl", {
+				{ type = "session", id = "abc123", timestamp = "2026-09-01T10:00:00.000Z" },
+				{ type = "session_info", name = "bug hunt" },
+			})
+
+			assert.is_true(Sessions.exists("abc123", cwd))
+			assert.is_true(Sessions.exists("bug hunt", cwd))
+			assert.is_false(Sessions.exists("nope", cwd))
+			assert.is_false(Sessions.exists("", cwd))
+		end)
+
+		it("is false without any session", function()
+			assert.is_false(Sessions.exists("abc123", cwd))
+		end)
+	end)
+
 	describe("last", function()
 		local dir, old, new
 

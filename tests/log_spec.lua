@@ -97,6 +97,31 @@ describe("log", function()
 		assert.are.equal(2, #read_lines(log:path()))
 	end)
 
+	it("removes the file from disk", function()
+		local log = Log.new("s", dir)
+		log:sent("{}")
+		log:remove()
+
+		assert.are.equal(0, vim.fn.filereadable(log:path()))
+	end)
+
+	it("removes the renamed file, not the original one", function()
+		local log = Log.new("temp", dir)
+		log:sent("{}")
+		log:set_session("real-session")
+		log:remove()
+
+		assert.are.equal(0, vim.fn.filereadable(dir .. "/crust-real-session.log"))
+		assert.are.equal(0, vim.fn.filereadable(dir .. "/crust-temp.log"))
+	end)
+
+	it("is a no-op when nothing was written", function()
+		local log = Log.new("s", dir)
+		assert.has_no.errors(function()
+			log:remove()
+		end)
+	end)
+
 	it("is a no-op when the session name does not change", function()
 		local log = Log.new("same", dir)
 		log:sent("{}")
@@ -142,5 +167,47 @@ describe("pi client logging", function()
 		config.config = nil
 		local pi = require("crust.pi.client").new()
 		assert.is_nil(pi:log())
+	end)
+
+	describe("on close", function()
+		local agent_dir
+		local cwd = "/tmp/crust-log-project"
+
+		---@param id string
+		local function write_session(id)
+			local session_dir = require("crust.sessions").dir(cwd)
+			vim.fn.mkdir(session_dir, "p")
+			local file = assert(io.open(session_dir .. "/" .. id .. ".jsonl", "w"))
+			file:write(vim.json.encode({ type = "session", id = id, timestamp = "2026-09-01T10:00:00.000Z" }) .. "\n")
+			file:close()
+		end
+
+		before_each(function()
+			agent_dir = vim.fn.tempname()
+			config.options =
+				{ log = { enabled = true, dir = dir }, sessions = { agent_dir = agent_dir } }
+			config.config = nil
+		end)
+
+		after_each(function()
+			vim.fn.delete(agent_dir, "rf")
+		end)
+
+		it("deletes the transcript when the run left no session", function()
+			local pi = require("crust.pi.client").new({ log = "ghost", cwd = cwd })
+			pi:log():sent("{}")
+			pi:close()
+
+			assert.are.equal(0, vim.fn.filereadable(dir .. "/crust-ghost.log"))
+		end)
+
+		it("keeps the transcript of a stored session", function()
+			write_session("kept")
+			local pi = require("crust.pi.client").new({ log = "kept", cwd = cwd })
+			pi:log():sent("{}")
+			pi:close()
+
+			assert.are.equal(1, vim.fn.filereadable(dir .. "/crust-kept.log"))
+		end)
 	end)
 end)

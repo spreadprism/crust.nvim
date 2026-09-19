@@ -149,6 +149,23 @@ function M.last(opts)
 	return nil
 end
 
+--- Whether `cwd` has a session known by id, name or file stem.
+---@param session string
+---@param cwd? string
+---@return boolean
+function M.exists(session, cwd)
+	if type(session) ~= "string" or session == "" then
+		return false
+	end
+
+	for _, entry in ipairs(M.list(cwd)) do
+		if entry.id == session or entry.name == session or vim.fn.fnamemodify(entry.path, ":t:r") == session then
+			return true
+		end
+	end
+	return false
+end
+
 --- Remove a session file from disk.
 ---@param path string
 ---@return boolean ok

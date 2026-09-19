@@ -108,6 +108,19 @@ function Log:set_session(session)
 		if old_path ~= new_path then
 			os.rename(old_path, new_path)
 		end
+		self._path = new_path
+	end
+end
+
+--- Close the transcript and delete it from disk.
+---
+--- Used when the run left no session behind, so the file is only rpc noise.
+function Log:remove()
+	local path = self._path
+	self:close()
+	if path then
+		os.remove(path)
+		self._path = nil
 	end
 end
 

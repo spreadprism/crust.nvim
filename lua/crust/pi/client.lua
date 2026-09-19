@@ -23,6 +23,7 @@ local Command = require("crust.pi.rpc")
 local Log = require("crust.log")
 local Extension = require("crust.extension")
 local Prompt = require("crust.prompt")
+local Sessions = require("crust.sessions")
 
 local PING_TIMEOUT_MS = 5000
 
@@ -139,7 +140,13 @@ function Pi:close()
 	self._stdout_buf = ""
 	self._pending = {}
 	if self._log then
-		self._log:close()
+		-- pi only persists a session once it has something to store, so a
+		-- transcript without one is just handshake noise.
+		if Sessions.exists(self._log:session(), self.opts.cwd) then
+			self._log:close()
+		else
+			self._log:remove()
+		end
 	end
 end
 
