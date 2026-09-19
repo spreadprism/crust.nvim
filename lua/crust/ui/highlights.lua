@@ -23,6 +23,13 @@ M.TOOL_ICON_PENDING = "CrustToolIconPending"
 M.TOOL_ICON_SUCCESS = "CrustToolIconSuccess"
 M.TOOL_ICON_ERROR = "CrustToolIconError"
 
+--- The 16 ansi colours of tool output, indexed 0-15 like the terminal palette.
+---@type table<integer, string>
+M.ANSI = {}
+for index = 0, 15 do
+	M.ANSI[index] = "CrustAnsi" .. index
+end
+
 ---@type table<string, vim.api.keyset.highlight>
 M.groups = {
 	[M.SEPARATOR] = { link = "WinSeparator" },
@@ -47,6 +54,12 @@ M.groups = {
 	[M.TOOL_ICON_ERROR] = { link = "DiagnosticError" },
 }
 
+-- Ansi colours follow the terminal palette, so they match the colorscheme.
+-- `terminal_color_N` is resolved in `M.setup`, where it is up to date.
+for index = 0, 15 do
+	M.groups[M.ANSI[index]] = { ctermfg = index }
+end
+
 ---@type table<Crust.Chat.Tools.Status, string>
 M.tool_icon = {
 	pending = M.TOOL_ICON_PENDING,
@@ -70,17 +83,23 @@ function M.setup(force)
 		vim.api.nvim_set_hl(0, "RenderMarkdownCode", { link = "CursorLine", default = true })
 	end
 
-	for name, def in pairs(M.groups) do
-		vim.api.nvim_set_hl(0, name, vim.tbl_extend("keep", def, { default = true }))
+	local function define()
+		for name, def in pairs(M.groups) do
+			vim.api.nvim_set_hl(0, name, vim.tbl_extend("keep", def, { default = true }))
+		end
+		for index = 0, 15 do
+			local color = vim.g["terminal_color_" .. index]
+			if type(color) == "string" and color ~= "" then
+				vim.api.nvim_set_hl(0, M.ANSI[index], { fg = color, ctermfg = index, default = true })
+			end
+		end
 	end
+
+	define()
 
 	vim.api.nvim_create_autocmd("ColorScheme", {
 		group = vim.api.nvim_create_augroup("crust.highlights", { clear = true }),
-		callback = function()
-			for name, def in pairs(M.groups) do
-				vim.api.nvim_set_hl(0, name, vim.tbl_extend("keep", def, { default = true }))
-			end
-		end,
+		callback = define,
 	})
 end
 

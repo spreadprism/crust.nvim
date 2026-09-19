@@ -9,16 +9,17 @@ a json **tool manifest** and registers whatever is in it. The transport back
 into neovim is neovim's own RPC socket, driven by
 `nvim --server <socket> --remote-expr`.
 
-Adding, removing or changing a tool is a **lua-only** change in
-`lua/crust/integrations/extension/tools.lua`. `extensions/nvim.ts` never has
-to be touched.
+Adding, removing or changing a tool is a **lua-only** change under
+`lua/crust/integrations/extension/`. `extensions/nvim.ts` never has to be
+touched.
 
 ## Pieces
 
 | File | Role |
 | --- | --- |
-| `lua/crust/integrations/extension/tools.lua` | The tool registry: name, description, json-schema parameters and handler of every tool |
-| `lua/crust/integrations/extension/init.lua` | Owns the nvim socket, the `-e` CLI args, the env, and re-exports `tools()` / `call()` |
+| `lua/crust/extension.lua` | The connection: owns the nvim socket, the `-e` CLI args and the env |
+| `lua/crust/integrations/extension/init.lua` | The registry: gathers the tool modules, `manifest()`, `call()`, `setup()` |
+| `lua/crust/integrations/extension/context.lua`, `lsp.lua` | One module per topic, each returning nothing but an array of tools |
 | `extensions/nvim.ts` | Runs inside pi: fetches the manifest, registers each tool, injects the context-flagged ones each turn |
 | `lua/crust/pi/client.lua` | Spawns pi with those args and that env |
 | `lua/crust/config.lua` | `config.extension` — `enabled`, `path`, `server` |
@@ -43,7 +44,7 @@ to be touched.
 4. `vim.fn.jobstart` launches `pi -e <ext> --mode rpc` with that env.
 5. While loading, the extension makes one **blocking** `nvim --remote-expr`
    call (`execFileSync`) for
-   `require('crust.integrations.extension').tools()` and registers every entry
+   `require('crust.integrations.extension').manifest()` and registers every entry
    of the manifest. Tools must exist before the first turn, so this one call
    cannot be async. If neovim does not answer, the extension registers nothing
    and pi runs normally.
@@ -67,7 +68,7 @@ per request (5s timeout, `pi.exec`).
 
 ## The tool manifest
 
-`M.tools()` returns a json array of tool specs:
+`M.manifest()` returns a json array of tool specs:
 
 ```json
 [
@@ -89,27 +90,37 @@ result is also injected as hidden context before every turn.
 
 Every call comes back as
 `require('crust.integrations.extension').call('<name>', '<json args>')`, which
-dispatches to the tool's `handler(args)` under `pcall`. A missing tool, bad
-json or a raising handler returns `{"error": "…"}` instead of killing the turn.
+dispatches to the tool's `handler(args)` under `pcall`. A handler always
+returns a **table**, which `call` encodes as json — no handler calls
+`vim.json.encode` itself. A missing tool, bad json or a raising handler returns
+`{"error": "…"}` instead of killing the turn.
 
 ### Adding a tool
 
-Append to `TOOLS` in `lua/crust/integrations/extension/tools.lua`:
+Create `lua/crust/integrations/extension/quickfix.lua` returning an array:
 
 ```lua
-{
-  name = "nvim_quickfix",
-  label = "Neovim Quickfix",
-  description = "The current quickfix list.",
-  parameters = { type = "object", properties = vim.empty_dict() },
-  handler = function()
-    return vim.json.encode(vim.fn.getqflist())
-  end,
+---@type Crust.Integrations.Extension.Tool[]
+return {
+  {
+    name = "nvim_quickfix",
+    label = "Neovim Quickfix",
+    description = "The current quickfix list.",
+    parameters = { type = "object", properties = vim.empty_dict() },
+    handler = function()
+      return { items = vim.fn.getqflist() }
+    end,
+  },
 }
 ```
 
-Restart the chat (the manifest is read once per pi process) and the tool is
-there.
+Then add `"quickfix"` to `SOURCES` in
+`lua/crust/integrations/extension/init.lua`. Restart the chat (the manifest is
+read once per pi process) and the tool is there.
+
+A tool that needs state of its own (an autocmd, a cache) sets an optional
+`setup = function() ... end`, run once from `crust.extension.setup()`.
+`nvim_context` uses it for the `WinEnter` tracking below.
 
 ## Per-turn context injection
 
@@ -130,7 +141,7 @@ return {
 `nvim` call fails or returns nothing, the hook returns `undefined` and the turn
 proceeds without editor state.
 
-`M.ctx()` returns JSON:
+`nvim_context` returns JSON:
 
 ```json
 {
@@ -148,11 +159,11 @@ Only loaded **and** `buflisted` buffers are listed. Paths are `:~:.`
 
 Never a crust panel. While the user types a prompt the focused window is
 `crust://input`, and reporting that says nothing about what they are working
-on. `M.win()` resolves, in order:
+on. `context.lua` resolves, in order:
 
 1. the focused window, when it is not a panel and not a float,
 2. the last non-panel window, remembered by a `WinEnter`/`BufWinEnter`
-   autocmd registered in `Context.setup()`,
+   autocmd registered in the tool's `setup`,
 3. the first ordinary window in the window list.
 
 A window counts as a panel when its filetype is `crust_input`,
@@ -164,9 +175,10 @@ test filters the buffer list. When only panels are open, `current` and
 
 ### `nvim_context`
 
-No parameters, `context = true`. Calls `Context.ctx()` and returns the same
-JSON on demand — used when the user says "this file" or "here" mid-turn and
-the per-turn snapshot is stale.
+No parameters, `context = true`, declared in
+`lua/crust/integrations/extension/context.lua`. Injected every turn and
+callable again on demand — used when the user says "this file" or "here"
+mid-turn and the per-turn snapshot is stale.
 
 ### `nvim_diagnostics`
 
@@ -210,19 +222,19 @@ in trusted projects.
 ## Debugging
 
 - `:echo v:servername` — the socket the extension will be pointed at.
-- `:lua print(require("crust.integrations.extension").server())` — what crust
-  actually resolved.
-- `:lua print(require("crust.integrations.extension").ctx())` — the exact
-  payload the model receives.
-- `:lua print(require("crust.integrations.extension").tools())` — the manifest
-  pi registers.
+- `:lua print(require("crust.extension").server())` — what crust actually
+  resolved.
+- `:lua print(require("crust.integrations.extension").call("nvim_context", "{}"))`
+  — the exact payload the model receives.
+- `:lua print(require("crust.integrations.extension").manifest())` — the
+  manifest pi registers.
 - `:lua print(require("crust.integrations.extension").call("nvim_diagnostics", "{}"))`
   — a tool call exactly as pi makes it.
 - Reproduce the extension's call by hand:
 
   ```bash
   nvim --server "$CRUST_NVIM_SERVER" --remote-expr \
-    'luaeval("require(\"crust.integrations.extension\").ctx()")'
+    'luaeval("require(\"crust.integrations.extension\").call(\"nvim_context\", \"{}\")")'
   ```
 
 - Enable `log.enabled` to get the rpc transcript in

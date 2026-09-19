@@ -459,6 +459,23 @@ describe("ui.chat.tools", function()
 			assert.are.same({ "a", "b" }, display:body())
 		end)
 
+		it("strips terminal escapes from bash output and keeps the colors", function()
+			local display = Display.new("bash", Tools.spec("bash"), { command = "just test" })
+			display:update({
+				type = "tool_execution_end",
+				result = result("\27[32mSuccess: \27[0m\t12\n\27[31mFailed : \27[0m\t0\r\n\27]0;title\7done"),
+			})
+
+			assert.are.same({ "Success: \t12", "Failed : \t0", "done" }, display:body())
+
+			local groups = {}
+			for _, segment in ipairs(segments(display)) do
+				groups[segment[1]] = segment[2]
+			end
+			assert.are.equal("Success: ", groups[Highlights.ANSI[2]])
+			assert.are.equal("Failed : ", groups[Highlights.ANSI[1]])
+		end)
+
 		it("truncates long bash output", function()
 			local display = Display.new("bash", Tools.spec("bash"), { command = "ls" })
 			local lines = {}

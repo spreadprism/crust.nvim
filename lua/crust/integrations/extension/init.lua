@@ -1,168 +1,109 @@
---- Optional integration that hands pi a view of this neovim instance.
+--- The tools the bundled pi extension exposes to the LLM.
 ---
---- When `config.extension.enabled` is true, crust starts (or reuses) a neovim
---- server socket and passes a bundled pi extension with `-e`. The extension
---- talks back over `nvim --server <socket> --remote-expr`, calling the functions
---- below, so the LLM sees the editor state without the user having to paste
---- anything.
+--- `M.manifest()` hands pi a json description of every tool (name, description,
+--- json-schema parameters) at startup, pi registers them dynamically, and every
+--- call comes back through `M.call(name, args)`. `extensions/nvim.ts` knows
+--- nothing about the individual tools, so adding one is a lua-only change.
+---
+--- A tool is declared in one of the sibling modules listed in `SOURCES`, each
+--- of which returns nothing but an array of tools. This file only gathers them.
+--- The connection to pi itself lives in `crust.extension`.
+
+---@class Crust.Integrations.Extension.Tool
+---@field name string tool name as the LLM sees it
+---@field label? string short label for the chat ui
+---@field description string what the tool does
+---@field parameters? table json schema of the arguments, object at the top
+---@field promptSnippet? string one-line hint for the system prompt
+---@field promptGuidelines? string[] usage guidelines for the system prompt
+---@field context? boolean also inject the result before every turn
+---@field setup? fun() state the tool needs, run once from `crust.extension`
+---@field handler fun(args: table): table the result, encoded as json for pi
 
 ---@class Crust.Integrations.Extension
 local M = {}
 
-local Context = require("crust.integrations.extension.context")
-local Lsp = require("crust.integrations.extension.lsp")
-local Tools = require("crust.integrations.extension.tools")
+--- Sibling modules that each return a `Crust.Integrations.Extension.Tool[]`.
+---@type string[]
+local SOURCES = {
+	"context",
+	"lsp",
+}
 
---- Environment variable the bundled extension reads the socket from.
-M.SERVER_ENV = "CRUST_NVIM_SERVER"
-
----@type string?
-local socket = nil
-
---- Repository root of this plugin, derived from this file's own path.
----@return string
-local function plugin_root()
-	local source = debug.getinfo(1, "S").source:sub(2)
-	return vim.fn.fnamemodify(source, ":h:h:h:h:h")
+---@type Crust.Integrations.Extension.Tool[]
+local TOOLS = {}
+for _, source in ipairs(SOURCES) do
+	vim.list_extend(TOOLS, require("crust.integrations.extension." .. source))
 end
 
----@param cfg? Crust.Config.Extension defaults to `config.get().extension`
----@return Crust.Config.Extension
-local function options(cfg)
-	return cfg or require("crust.config").get().extension
-end
-
----@param cfg? Crust.Config.Extension
----@return boolean
-function M.enabled(cfg)
-	cfg = options(cfg)
-	return require("crust.config").enabled(cfg.enabled)
-end
-
---- Path of the pi extension handed to `-e`, or nil when it is missing.
----@param cfg? Crust.Config.Extension
----@return string?
-function M.path(cfg)
-	cfg = options(cfg)
-
-	local path = cfg.path or (plugin_root() .. "/extensions/nvim.ts")
-	path = vim.fn.fnamemodify(vim.fn.expand(path), ":p")
-	if vim.fn.filereadable(path) == 1 then
-		return path
+---@param name string
+---@return Crust.Integrations.Extension.Tool?
+local function find(name)
+	for _, tool in ipairs(TOOLS) do
+		if tool.name == name then
+			return tool
+		end
 	end
-
-	vim.notify("crust: pi extension not found: " .. path, vim.log.levels.WARN)
 	return nil
 end
 
---- Address of the neovim socket the extension connects back to.
---- Reuses `--listen`/`v:servername` when nvim already has one, otherwise starts
---- a server on first call and keeps it for the rest of the session.
----@param cfg? Crust.Config.Extension
----@return string?
-function M.server(cfg)
-	cfg = options(cfg)
-
-	if type(cfg.server) == "string" and cfg.server ~= "" then
-		return cfg.server
-	end
-
-	if socket and vim.fn.filereadable(socket) == 0 and vim.fn.executable(socket) == 0 then
-		-- A pipe disappears when the server is stopped, start a fresh one.
-		socket = nil
-	end
-
-	if socket then
-		return socket
-	end
-
-	if vim.v.servername ~= "" then
-		socket = vim.v.servername
-		return socket
-	end
-
-	local ok, address = pcall(vim.fn.serverstart)
-	if not ok or address == "" then
-		vim.notify("crust: could not start a neovim server for the nvim extension integration", vim.log.levels.WARN)
-		return nil
-	end
-
-	socket = address
-	return socket
-end
-
---- Extra pi CLI args, empty when the integration is off or unusable.
----@param cfg? Crust.Config.Extension
----@return string[] args
-function M.args(cfg)
-	if not M.enabled(cfg) then
-		return {}
-	end
-
-	local path = M.path(cfg)
-	if not path then
-		return {}
-	end
-
-	return { "-e", path }
-end
-
---- Environment for the pi process, empty when the integration is off.
----@param cfg? Crust.Config.Extension
----@return table<string, string> env
-function M.env(cfg)
-	if not M.enabled(cfg) then
-		return {}
-	end
-
-	local server = M.server(cfg)
-	if not server then
-		return {}
-	end
-
-	return { [M.SERVER_ENV] = server }
-end
-
---- Start the server early so the socket exists before the first chat, and
---- begin tracking the window the user works in.
----@param cfg? Crust.Config.Extension
-function M.setup(cfg)
-	if M.enabled(cfg) then
-		M.server(cfg)
-		Context.setup()
+--- Run the `setup` of every tool that has one. Called by `crust.extension`.
+function M.setup()
+	for _, tool in ipairs(TOOLS) do
+		if tool.setup then
+			tool.setup()
+		end
 	end
 end
 
---- Editor context: cwd, listed buffers, and the cursor position.
---- Lives in `crust.integrations.extension.context`, re-exported so the
---- extension keeps calling a single module over `--remote-expr`.
+--- Every tool, as the json manifest pi registers at startup.
 ---@return string json
-function M.ctx()
-	return Context.ctx()
+function M.manifest()
+	local manifest = {}
+	for _, tool in ipairs(TOOLS) do
+		manifest[#manifest + 1] = {
+			name = tool.name,
+			label = tool.label,
+			description = tool.description,
+			parameters = tool.parameters or { type = "object", properties = vim.empty_dict() },
+			promptSnippet = tool.promptSnippet,
+			promptGuidelines = tool.promptGuidelines,
+			context = tool.context or nil,
+		}
+	end
+	return vim.json.encode(manifest)
 end
 
---- Diagnostics of one buffer, or of every loaded buffer when `path` is nil.
---- Lives in `crust.integrations.extension.lsp`, re-exported the same way.
----@param path? string
----@return string json
-function M.diagnostics(path)
-	return Lsp.diagnostics(path)
-end
-
---- Json manifest of every tool the extension should register.
---- Declared in `crust.integrations.extension.tools`, which is the only file to
---- touch when adding a tool.
----@return string json
-function M.tools()
-	return Tools.manifest()
-end
-
---- Run one of the tools from the manifest.
+--- Run one tool. Arguments arrive as a json object string from pi and the
+--- handler's table goes back as json; failures come back as
+--- `{"error": "..."}` instead of raising, so a broken tool never kills the
+--- turn.
 ---@param name string
----@param args? string json object of arguments
+---@param args? string json object
 ---@return string json
 function M.call(name, args)
-	return Tools.call(name, args)
+	local tool = find(name)
+	if not tool then
+		return vim.json.encode({ error = "unknown tool: " .. tostring(name) })
+	end
+
+	local decoded = {}
+	if type(args) == "string" and args ~= "" then
+		local ok, parsed = pcall(vim.json.decode, args)
+		if not ok then
+			return vim.json.encode({ error = "invalid arguments: " .. tostring(parsed) })
+		end
+		if type(parsed) == "table" then
+			decoded = parsed
+		end
+	end
+
+	local ok, result = pcall(tool.handler, decoded)
+	if not ok then
+		return vim.json.encode({ error = tostring(result) })
+	end
+
+	return vim.json.encode(result)
 end
 
 return M

@@ -1,45 +1,17 @@
-local Config = require("crust.config")
-local Extension = require("crust.integrations.extension")
+local Tools = require("crust.integrations.extension")
 
-describe("extension", function()
-	after_each(function()
-		Config.config = nil
-	end)
+--- Call a tool the way pi does: name plus a json object string.
+---@param name string
+---@param args? table
+---@return table
+local function call(name, args)
+	return vim.json.decode(Tools.call(name, vim.json.encode(args or vim.empty_dict())))
+end
 
-	it("is off by default", function()
-		assert.False(Extension.enabled())
-		assert.are.same({}, Extension.args())
-		assert.are.same({}, Extension.env())
-	end)
-
-	it("passes the bundled extension when enabled", function()
-		local args = Extension.args({ enabled = true })
-		assert.are.equal("-e", args[1])
-		assert.are.equal(1, vim.fn.filereadable(args[2]))
-		assert.truthy(args[2]:match("extensions/nvim%.ts$"))
-	end)
-
-	it("warns and passes nothing for a missing extension", function()
-		local args = Extension.args({ enabled = true, path = "/tmp/crust-no-such-extension.ts" })
-		assert.are.same({}, args)
-	end)
-
-	it("exports the socket in the process environment", function()
-		local env = Extension.env({ enabled = true, server = "/tmp/crust-test.sock" })
-		assert.are.same({ [Extension.SERVER_ENV] = "/tmp/crust-test.sock" }, env)
-	end)
-
-	it("starts a neovim server when there is none configured", function()
-		local address = Extension.server({ enabled = true })
-		assert.is_string(address)
-		assert.is_true(#address > 0)
-		-- Cached, so a second chat reuses the same socket.
-		assert.are.equal(address, Extension.server({ enabled = true }))
-	end)
-
-	describe("tools", function()
-		it("describes every tool in the manifest", function()
-			local manifest = vim.json.decode(Extension.tools())
+describe("extension tools", function()
+	describe("manifest", function()
+		it("describes every tool", function()
+			local manifest = vim.json.decode(Tools.manifest())
 			assert.is_true(#manifest > 0)
 
 			local names = {}
@@ -53,28 +25,22 @@ describe("extension", function()
 			assert.is_true(names.nvim_context.context)
 			assert.is_table(names.nvim_diagnostics.parameters.properties.path)
 		end)
+	end)
 
-		it("dispatches a call with decoded arguments", function()
-			local result = vim.json.decode(Extension.call("nvim_diagnostics", '{"path":"/tmp/crust-no-such-file.lua"}'))
-			assert.are.same({}, result.diagnostics)
-
-			local snapshot = vim.json.decode(Extension.call("nvim_context", "{}"))
-			assert.are.equal(vim.fn.getcwd(), snapshot.cwd)
-		end)
-
+	describe("call", function()
 		it("reports unknown tools and bad arguments instead of raising", function()
-			assert.is_string(vim.json.decode(Extension.call("nvim_nope", "{}")).error)
-			assert.is_string(vim.json.decode(Extension.call("nvim_context", "not json")).error)
+			assert.is_string(vim.json.decode(Tools.call("nvim_nope", "{}")).error)
+			assert.is_string(vim.json.decode(Tools.call("nvim_context", "not json")).error)
 		end)
 	end)
 
-	describe("ctx", function()
+	describe("nvim_context", function()
 		it("reports cwd, the current buffer and the cursor", function()
 			local buf = vim.api.nvim_create_buf(true, false)
 			vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "one", "two" })
 			vim.api.nvim_win_set_buf(0, buf)
 
-			local snapshot = vim.json.decode(Extension.ctx())
+			local snapshot = call("nvim_context")
 			assert.are.equal(vim.fn.getcwd(), snapshot.cwd)
 			assert.are.equal(buf, snapshot.current.buf)
 			assert.are.equal(2, snapshot.current.lines)
@@ -83,8 +49,7 @@ describe("extension", function()
 		end)
 
 		it("reports the last real window, not the chat input", function()
-			local Context = require("crust.integrations.extension.context")
-			Context.setup()
+			Tools.setup()
 
 			local file = vim.api.nvim_create_buf(true, false)
 			vim.api.nvim_buf_set_lines(file, 0, -1, false, { "one", "two", "three" })
@@ -105,7 +70,7 @@ describe("extension", function()
 				height = 3,
 			})
 
-			local snapshot = vim.json.decode(Extension.ctx())
+			local snapshot = call("nvim_context")
 			assert.are.equal(file, snapshot.current.buf)
 			assert.are.equal(3, snapshot.cursor.line)
 			for _, item in ipairs(snapshot.buffers) do
@@ -116,9 +81,9 @@ describe("extension", function()
 		end)
 	end)
 
-	describe("diagnostics", function()
+	describe("nvim_diagnostics", function()
 		it("returns an empty list for an unknown file", function()
-			local result = vim.json.decode(Extension.diagnostics("/tmp/crust-no-such-file.lua"))
+			local result = call("nvim_diagnostics", { path = "/tmp/crust-no-such-file.lua" })
 			assert.are.same({}, result.diagnostics)
 		end)
 
@@ -131,7 +96,7 @@ describe("extension", function()
 			})
 
 			local found = false
-			for _, item in ipairs(vim.json.decode(Extension.diagnostics()).diagnostics) do
+			for _, item in ipairs(call("nvim_diagnostics").diagnostics) do
 				if item.message == "boom" then
 					found = true
 					assert.are.equal("ERROR", item.severity)

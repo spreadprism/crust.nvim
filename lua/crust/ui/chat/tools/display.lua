@@ -18,6 +18,7 @@
 ---@class Crust.Chat.Tools.Spec
 ---@field title? string|fun(display: Crust.Chat.Tools.Display): string
 ---@field body? fun(display: Crust.Chat.Tools.Display): string[]|string|nil
+---@field body_highlights? fun(display: Crust.Chat.Tools.Display): Crust.Ui.Ansi.Range[]? ranges into the body lines, used instead of the flat body group
 ---@field inline? boolean|fun(display: Crust.Chat.Tools.Display): boolean render the body on the title line instead of under it
 ---@field title_lang? string treesitter language used to highlight the title
 ---@field body_lang? string treesitter language used to highlight the body
@@ -312,9 +313,26 @@ function Display:render(width)
 		end
 	end
 
-	local syntax = #body > 0
+	local colored = #body > 0 and self.spec.body_highlights and self.spec.body_highlights(self) or nil
+	local syntax = not colored
+		and #body > 0
 		and syntax_highlights(table.concat(body, "\n"), self.spec.body_lang, body_line, #body_prefix, #body_prefix)
-	if syntax then
+
+	if colored then
+		-- Uncoloured stretches still need the plain body group underneath.
+		for index = body_line, #lines do
+			highlights[#highlights + 1] =
+				{ line = index, col = #body_prefix, end_col = #lines[index], group = Highlights.TOOL_BODY }
+		end
+		for _, range in ipairs(colored) do
+			highlights[#highlights + 1] = {
+				line = body_line + range.line - 1,
+				col = #body_prefix + range.col,
+				end_col = #body_prefix + range.end_col,
+				group = range.group,
+			}
+		end
+	elseif syntax then
 		vim.list_extend(highlights, syntax)
 	else
 		for index = body_line, #lines do

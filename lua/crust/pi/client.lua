@@ -21,7 +21,7 @@ Pi.__index = Pi
 
 local Command = require("crust.pi.rpc")
 local Log = require("crust.log")
-local Extension = require("crust.integrations.extension")
+local Extension = require("crust.extension")
 local Prompt = require("crust.prompt")
 
 local PING_TIMEOUT_MS = 5000

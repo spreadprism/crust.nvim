@@ -1,15 +1,29 @@
---- Editor context the bundled pi extension injects on every turn.
----
---- Every function here is called over `--remote-expr` and must return a json
---- string, so the extension can hand the result straight to the model.
+--- `nvim_context`: the editor state the bundled pi extension injects on every
+--- turn and can ask for again mid-turn.
 ---
 --- The reported window is never a crust panel: while the user types a prompt
 --- the focused window is `crust://input`, which says nothing about what they
 --- are working on. A `WinEnter` autocmd remembers the last window that held a
 --- real buffer, so "current" keeps pointing at the file behind the chat.
+---
+--- Returns an array of tools; see `crust.integrations.extension`.
 
----@class Crust.Integrations.Extension.Context
-local M = {}
+---@class Crust.Context.Buffer
+---@field buf integer buffer number
+---@field path string? `:~:.` path, nil for an unnamed buffer
+---@field filetype string
+---@field modified boolean
+---@field lines integer
+
+---@class Crust.Context.Cursor
+---@field line integer 1-based
+---@field col integer 1-based
+
+---@class Crust.Context
+---@field cwd string
+---@field buffers Crust.Context.Buffer[] loaded and listed, panels excluded
+---@field current Crust.Context.Buffer? omitted when only chat panels are open
+---@field cursor Crust.Context.Cursor? omitted with `current`
 
 local Filetypes = require("crust.filetypes")
 
@@ -22,13 +36,13 @@ local PANELS = {
 	["crust_status"] = true,
 }
 
----@type integer? window id, tracked by `M.setup`
+---@type integer? window id, tracked by the tool's `setup`
 local last_win = nil
 
 --- True for the chat input, output and status buffers.
 ---@param buf integer
 ---@return boolean
-function M.is_panel(buf)
+local function is_panel(buf)
 	if not vim.api.nvim_buf_is_valid(buf) then
 		return false
 	end
@@ -49,13 +63,13 @@ local function usable(win)
 	if vim.api.nvim_win_get_config(win).relative ~= "" then
 		return false
 	end
-	return not M.is_panel(vim.api.nvim_win_get_buf(win))
+	return not is_panel(vim.api.nvim_win_get_buf(win))
 end
 
 --- Window the user last worked in, ignoring the chat panels.
 --- Falls back to the tracked window, then to any ordinary window.
 ---@return integer? win
-function M.win()
+local function win()
 	local current = vim.api.nvim_get_current_win()
 	if usable(current) then
 		return current
@@ -65,9 +79,9 @@ function M.win()
 		return last_win
 	end
 
-	for _, win in ipairs(vim.api.nvim_list_wins()) do
-		if usable(win) then
-			return win
+	for _, candidate in ipairs(vim.api.nvim_list_wins()) do
+		if usable(candidate) then
+			return candidate
 		end
 	end
 
@@ -75,21 +89,21 @@ function M.win()
 end
 
 --- Remember the last non-panel window, so the chat can report it later.
-function M.setup()
+local function setup()
 	local group = vim.api.nvim_create_augroup("crust.extension.context", { clear = true })
 	vim.api.nvim_create_autocmd({ "WinEnter", "BufWinEnter" }, {
 		group = group,
 		callback = function()
-			local win = vim.api.nvim_get_current_win()
-			if usable(win) then
-				last_win = win
+			local current = vim.api.nvim_get_current_win()
+			if usable(current) then
+				last_win = current
 			end
 		end,
 	})
 end
 
 ---@param buf integer
----@return table
+---@return Crust.Context.Buffer
 local function buffer_info(buf)
 	local name = vim.api.nvim_buf_get_name(buf)
 	return {
@@ -104,28 +118,44 @@ end
 --- Everything the extension injects as context: cwd, listed buffers, and the
 --- cursor position of the window the user was last in. `current` and `cursor`
 --- are omitted when only chat panels are open.
----@return string json
-function M.ctx()
+---@return Crust.Context
+local function ctx()
 	local buffers = {}
 	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-		if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].buflisted and not M.is_panel(buf) then
+		if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].buflisted and not is_panel(buf) then
 			buffers[#buffers + 1] = buffer_info(buf)
 		end
 	end
 
+	---@type Crust.Context
 	local context = {
 		cwd = vim.fn.getcwd(),
 		buffers = buffers,
 	}
 
-	local win = M.win()
-	if win then
-		local cursor = vim.api.nvim_win_get_cursor(win)
-		context.current = buffer_info(vim.api.nvim_win_get_buf(win))
+	local window = win()
+	if window then
+		local cursor = vim.api.nvim_win_get_cursor(window)
+		context.current = buffer_info(vim.api.nvim_win_get_buf(window))
 		context.cursor = { line = cursor[1], col = cursor[2] + 1 }
 	end
 
-	return vim.json.encode(context)
+	return context
 end
 
-return M
+---@type Crust.Integrations.Extension.Tool[]
+return {
+	{
+		name = "nvim_context",
+		label = "Neovim Context",
+		description = "Current neovim state: cwd, listed buffers, the file the user is working in and the cursor position.",
+		promptSnippet = "Inspect the current neovim editor state",
+		promptGuidelines = {
+			"Use nvim_context when the user says 'this file', 'here' or 'the current buffer'.",
+		},
+		context = true,
+		parameters = { type = "object", properties = vim.empty_dict() },
+		setup = setup,
+		handler = ctx,
+	},
+}
