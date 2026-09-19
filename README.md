@@ -1,55 +1,48 @@
 # crust.nvim
 
-nvim integration of [PI](https://pi.dev)
-
 > [!WARNING]
 > Early work in progress. API and commands may change.
+
+Because [PI](https://pi.dev) needs a Crust
 
 ## Requirements
 
 - Neovim >= 0.13
 - `pi` on `$PATH` (configurable via `bin`)
+- [snacks.nvim](https://github.com/folke/snacks.nvim) (optional, session picker with preview and delete)
 - [plenary.nvim](https://github.com/nvim-lua/plenary.nvim) (tests only)
 
-## Installation
-
-<!-- lazy.nvim / packer / rocks snippet -->
-
-## Usage
-
-<!-- open the chat, type a prompt, <CR> to submit -->
-
-### Commands
+## Commands
 
 | Command | Description |
 | --- | --- |
 | `:Crust chat` | Open the chat panel (default) |
 | `:Crust toggle` | Toggle the chat panel |
+| `:Crust new` | Start a new session in the current chat |
+| `:Crust continue` | Open the chat on the most recent session of the cwd |
+| `:Crust sessions` | Pick a past session: `<CR>` resumes, `<C-d>` deletes |
+| `:Crust rename [name]` | Rename the live session, prompts without a name |
 | `:Crust stop` | Close the panel and stop the pi process |
 
-### Lua API
+## Sessions
 
-<!-- require("crust").open() / .toggle() / .stop() / .chat() -->
+```lua
+require("crust").open({ continue = true }) -- resume the last session
+require("crust").toggle({ session = path }) -- resume a specific file
+require("crust").continue()
+require("crust").new_session() -- fresh session, same windows
+require("crust").sessions() -- picker
+require("crust").rename_session("bug hunt")
+require("crust.sessions").list() -- Crust.Session[], newest first
+```
 
-## Configuration
-
-<!-- setup() defaults: { bin = "pi" } -->
-
-## How it works
-
-<!-- pi client (lua/crust/pi/client.lua) spawns pi, rpc.lua builds commands,
-     events stream into the chat output buffer -->
-
-## Development
-
-<!-- just minimal   -> nvim --clean with only crust.nvim loaded
-     just test      -> headless plenary busted run over tests/
-     CRUST_TEST_PI_EXTENSIONS -> ":"-separated pi extensions for test runs -->
-
-## Roadmap
-
-<!-- known gaps / planned features -->
-
-## License
-
-<!-- TBD -->
+```lua
+require("crust").setup({
+  keymaps = {
+    cancel = "<C-c>",
+  },
+  sessions = {
+    agent_dir = nil, -- defaults to $PI_CODING_AGENT_DIR or ~/.pi/agent
+  },
+})
+```

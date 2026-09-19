@@ -20,6 +20,10 @@ local M = {}
 
 ---@class Crust.Config.Keymaps
 ---@field cancel string|false abort the running turn, set to false to unbind
+---@field sessions string|false open the session picker, normal mode in both panels
+
+---@class Crust.Config.Sessions
+---@field agent_dir? string pi agent directory, defaults to `$PI_CODING_AGENT_DIR` or `~/.pi/agent`
 
 ---@class Crust.Config.Prompt
 ---@field system_prompt? string|fun(): string? replaces pi's own system prompt
@@ -46,6 +50,7 @@ local M = {}
 ---@field icons Crust.Config.Icons status icons shown before a tool title
 ---@field labels Crust.Config.Labels message icons, same glyphs as pi.nvim
 ---@field timestamp_format string passed to os.date for message timestamps
+---@field sessions Crust.Config.Sessions where session history is read from
 ---@field spinner string|string[]|Crust.Spinner preset name ("robot", "classic", "dots") or a custom definition
 ---@field status_text string shown next to the spinner while the agent works, empty for the icon alone
 ---@field keymaps Crust.Config.Keymaps
@@ -70,6 +75,10 @@ M.defaults = {
 	status_text = "",
 	keymaps = {
 		cancel = "<C-c>",
+		sessions = "<leader>s",
+	},
+	sessions = {
+		agent_dir = nil,
 	},
 	log = {
 		enabled = false,

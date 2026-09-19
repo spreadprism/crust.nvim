@@ -13,12 +13,40 @@ function M.chat()
 	return chat
 end
 
-function M.open()
-	M.chat():open()
+---@param opts? Crust.Chat.OpenOpts
+function M.open(opts)
+	M.chat():open(opts)
 end
 
-function M.toggle()
-	M.chat():toggle()
+---@param opts? Crust.Chat.OpenOpts
+function M.toggle(opts)
+	M.chat():toggle(opts)
+end
+
+--- Open the chat on the most recent session of the cwd.
+function M.continue()
+	M.open({ continue = true })
+end
+
+--- Open the chat and pick a past session: `<CR>` resumes it, the delete key
+--- removes the selected ones.
+function M.sessions()
+	local current = M.chat()
+	current:open()
+	current:sessions()
+end
+
+--- Start a new session in the current chat, clearing the panel.
+function M.new_session()
+	local current = M.chat()
+	current:open()
+	current:new_session()
+end
+
+--- Rename the live session, prompting when `name` is omitted.
+---@param name? string
+function M.rename_session(name)
+	M.chat():rename(name)
 end
 
 function M.stop()

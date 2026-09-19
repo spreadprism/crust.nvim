@@ -9,8 +9,18 @@
 ---@field private _streaming boolean
 ---@field private _augroup integer?
 ---@field private _closing boolean
+---@field private _session Crust.Chat.Session
 local Chat = {}
 Chat.__index = Chat
+
+---@class Crust.Chat.Session what the last `get_state` said about the session
+---@field id? string
+---@field name? string
+---@field file? string path of the `.jsonl` pi is writing
+
+---@class Crust.Chat.OpenOpts
+---@field continue? boolean load the most recent session of the cwd
+---@field session? string session file to load
 
 local next_id = 0
 
@@ -21,6 +31,7 @@ local Output = require("crust.ui.chat.output")
 local Tools = require("crust.ui.chat.tools")
 local Status = require("crust.ui.chat.status")
 local Highlights = require("crust.ui.highlights")
+local Replay = require("crust.ui.chat.replay")
 
 local WIDTH_RATIO = 0.4
 
@@ -33,6 +44,7 @@ function Chat.new(opts)
 	self._id = next_id
 	self._closing = false
 	self._streaming = false
+	self._session = {}
 	self._output = Output.new()
 	self._tools = Tools.new()
 	self._status = Status.new(self._output)
@@ -40,14 +52,7 @@ function Chat.new(opts)
 		self:_send(text)
 	end)
 
-	local cancel = require("crust.config").get().keymaps.cancel
-	if cancel then
-		local function abort()
-			self:cancel()
-		end
-		vim.keymap.set({ "n", "i" }, cancel, abort, { buffer = self._input:buf(), desc = "crust: cancel" })
-		vim.keymap.set("n", cancel, abort, { buffer = self._output:buf(), desc = "crust: cancel" })
-	end
+	self:_setup_keymaps()
 
 	self._pi = Pi.new(vim.tbl_extend("force", opts or {}, {
 		on_event = function(event)
@@ -80,6 +85,37 @@ function Chat:status()
 	return self._status
 end
 
+--- Session pi last reported, refreshed after every state round-trip.
+---@return Crust.Chat.Session
+function Chat:session()
+	return self._session
+end
+
+--- Chat keymaps, all buffer-local and all disabled with `false`.
+---@private
+function Chat:_setup_keymaps()
+	local keymaps = require("crust.config").get().keymaps
+
+	---@param lhs string|false
+	---@param modes string[] modes bound in the input buffer
+	---@param desc string
+	---@param rhs fun()
+	local function map(lhs, modes, desc, rhs)
+		if not lhs then
+			return
+		end
+		vim.keymap.set(modes, lhs, rhs, { buffer = self._input:buf(), desc = desc })
+		vim.keymap.set("n", lhs, rhs, { buffer = self._output:buf(), desc = desc })
+	end
+
+	map(keymaps.cancel, { "n", "i" }, "crust: cancel", function()
+		self:cancel()
+	end)
+	map(keymaps.sessions, { "n" }, "crust: sessions", function()
+		self:sessions()
+	end)
+end
+
 ---@return integer out_buf, integer in_buf
 function Chat:bufs()
 	return self._output:buf(), self._input:buf()
@@ -90,23 +126,33 @@ function Chat:is_visible()
 	return self._output:win() ~= nil
 end
 
-function Chat:open()
+---@param opts? Crust.Chat.OpenOpts
+function Chat:open(opts)
+	opts = opts or {}
+
 	if self:is_visible() then
 		self._input:focus()
-		return
+	else
+		self._output:open(math.floor(vim.o.columns * WIDTH_RATIO))
+		self._input:open()
+		self:_watch_windows()
+		self._status:render()
+
+		local ok, err = self._pi:connect()
+		if not ok then
+			self._output:error(tostring(err))
+			return
+		end
+
+		self._input:focus()
+		self:refresh_session()
 	end
 
-	self._output:open(math.floor(vim.o.columns * WIDTH_RATIO))
-	self._input:open()
-	self:_watch_windows()
-	self._status:render()
-
-	local ok, err = self._pi:connect()
-	if not ok then
-		self._output:error(tostring(err))
+	if opts.session then
+		self:load_session(opts.session)
+	elseif opts.continue then
+		self:continue()
 	end
-
-	self._input:focus()
 end
 
 --- Closing one panel closes the other: the two windows are one unit.
@@ -166,11 +212,12 @@ function Chat:close()
 	self._closing = false
 end
 
-function Chat:toggle()
+---@param opts? Crust.Chat.OpenOpts
+function Chat:toggle(opts)
 	if self:is_visible() then
 		self:close()
 	else
-		self:open()
+		self:open(opts)
 	end
 end
 
@@ -232,9 +279,229 @@ function Chat:stop()
 	self._pi:close()
 end
 
+--- Wipe the transcript, the tool blocks and any running status.
+function Chat:clear()
+	self._streaming = false
+	self._status:clear()
+	self._tools:reset()
+	self._output:clear()
+end
+
+--- Make sure the pi process is up, reporting failures in the panel.
+---@private
+---@return boolean ok
+function Chat:_ensure_running()
+	if self._pi:is_running() then
+		return true
+	end
+
+	local ok, err = self._pi:connect()
+	if not ok then
+		self._output:error(tostring(err))
+	end
+	return ok
+end
+
+--- Refresh the cached session id, name and file.
+---@param callback? fun(session: Crust.Chat.Session)
+function Chat:refresh_session(callback)
+	if not self:_ensure_running() then
+		return
+	end
+
+	self._pi:send(Command.get_state(), function(event)
+		local data = event.success ~= false and event.data or nil --[[@as Crust.Pi.Data.State?]]
+		if data then
+			self._session = {
+				id = data.sessionId,
+				name = data.sessionName,
+				file = data.sessionFile,
+			}
+		end
+		if callback then
+			callback(self._session)
+		end
+	end)
+end
+
+--- Switch pi to `path` and redraw the panel with that conversation.
+---@param path string session `.jsonl`
+---@param callback? fun(ok: boolean, err: string?)
+function Chat:load_session(path, callback)
+	if not self:_ensure_running() then
+		if callback then
+			callback(false, "pi process is not running")
+		end
+		return
+	end
+
+	---@param ok boolean
+	---@param err string?
+	local function finish(ok, err)
+		if not ok and err then
+			self._output:error(err)
+		end
+		self._status:clear()
+		if callback then
+			callback(ok, err)
+		end
+	end
+
+	self._status:set("Loading session…")
+
+	local _, send_err = self._pi:send(Command.switch_session(path), function(event)
+		if event.success == false then
+			return finish(false, event.error or "failed to switch session")
+		end
+
+		local data = event.data --[[@as Crust.Pi.Data.Cancelled?]]
+		if data and data.cancelled then
+			return finish(false, "session switch was cancelled")
+		end
+
+		self:clear()
+		self:refresh_session()
+
+		local _, messages_err = self._pi:send(Command.get_messages(), function(response)
+			if response.success == false then
+				return finish(false, response.error or "failed to load session messages")
+			end
+
+			local messages = response.data --[[@as Crust.Pi.Data.Messages?]]
+			Replay.render(messages and messages.messages or {}, self._output, self._tools)
+			finish(true)
+		end)
+		if messages_err then
+			finish(false, messages_err)
+		end
+	end)
+
+	if send_err then
+		finish(false, send_err)
+	end
+end
+
+--- Load the most recent session of the cwd, like `pi --continue`.
+---@param callback? fun(ok: boolean, err: string?)
+function Chat:continue(callback)
+	local Sessions = require("crust.sessions")
+	local session = Sessions.last({ exclude = self._session.file })
+
+	if not session then
+		vim.notify("crust: no previous session for " .. vim.fn.getcwd(), vim.log.levels.INFO)
+		if callback then
+			callback(false, "no previous session")
+		end
+		return
+	end
+
+	self:load_session(session.path, callback)
+end
+
+--- Start a fresh session in this chat, wiping the panel.
+--- The previous session stays on disk and can be resumed from the picker.
+---@param callback? fun(ok: boolean, err: string?)
+function Chat:new_session(callback)
+	if not self:_ensure_running() then
+		if callback then
+			callback(false, "pi process is not running")
+		end
+		return
+	end
+
+	---@param message string
+	local function fail(message)
+		self._output:error(message)
+		if callback then
+			callback(false, message)
+		end
+	end
+
+	-- The session pi is leaving is recorded as the parent of the new one.
+	local parent = self._session.file
+
+	local _, err = self._pi:send(Command.new_session(parent), function(event)
+		if event.success == false then
+			return fail(event.error or "failed to start a new session")
+		end
+
+		self:clear()
+		self._input:clear()
+		self:refresh_session()
+		if callback then
+			callback(true)
+		end
+	end)
+
+	if err then
+		fail(err)
+	end
+end
+
+--- Pick a past session and load it. The picker can also delete sessions.
+function Chat:sessions()
+	require("crust.sessions.picker").select({}, function(session)
+		if session then
+			self:load_session(session.path)
+		end
+	end)
+end
+
+--- Rename the current session. Prompts when `name` is omitted.
+---@param name? string
+---@param callback? fun(ok: boolean, err: string?)
+function Chat:rename(name, callback)
+	if not self:_ensure_running() then
+		if callback then
+			callback(false, "pi process is not running")
+		end
+		return
+	end
+
+	if name == nil then
+		self:refresh_session(function(session)
+			vim.ui.input({ prompt = "Session name: ", default = session.name or "" }, function(value)
+				if value and vim.trim(value) ~= "" then
+					self:rename(vim.trim(value), callback)
+				end
+			end)
+		end)
+		return
+	end
+
+	local _, err = self._pi:send(Command.set_session_name(name), function(event)
+		if event.success == false then
+			local message = event.error or "failed to rename session"
+			self._output:error(message)
+			if callback then
+				callback(false, message)
+			end
+			return
+		end
+
+		self._session.name = name
+		if callback then
+			callback(true)
+		end
+	end)
+
+	if err then
+		self._output:error(err)
+		if callback then
+			callback(false, err)
+		end
+	end
+end
+
 ---@private
 ---@param event Crust.Pi.Event
 function Chat:_on_event(event)
+	-- Every state answer carries the session, whoever asked for it.
+	if event.type == "response" and event.command == "get_state" and type(event.data) == "table" then
+		local data = event.data --[[@as Crust.Pi.Data.State]]
+		self._session = { id = data.sessionId, name = data.sessionName, file = data.sessionFile }
+	end
+
 	if event.type == "agent_start" then
 		self._streaming = true
 		self._output:header(require("crust.config").get().labels.agent, Highlights.AGENT_TITLE)
