@@ -1,9 +1,14 @@
 --- The tools the bundled pi extension exposes to the LLM.
 ---
---- `M.manifest()` hands pi a json description of every tool (name, description,
---- json-schema parameters) at startup, pi registers them dynamically, and every
---- call comes back through `M.call(name, args)`. `extensions/nvim.ts` knows
---- nothing about the individual tools, so adding one is a lua-only change.
+--- `M.manifest(token)` hands pi a json description of every tool (name,
+--- description, json-schema parameters) at startup, pi registers them
+--- dynamically, and every call comes back through `M.call(token, name, args)`.
+--- `extensions/nvim.ts` knows nothing about the individual tools, so adding one
+--- is a lua-only change.
+---
+--- Both entry points take the session token generated in `crust.extension`.
+--- The socket is reachable by anything on the machine, the token is not: it is
+--- handed to the extension once, in a file it deletes on startup.
 ---
 --- A tool is declared in one of the sibling modules listed in `SOURCES`, each
 --- of which returns nothing but an array of tools. This file only gathers them.
@@ -56,9 +61,20 @@ function M.setup()
 	end
 end
 
---- Every tool, as the json manifest pi registers at startup.
+--- `{"error": "unauthorized"}`, for a caller without the session token.
 ---@return string json
-function M.manifest()
+local function unauthorized()
+	return vim.json.encode({ error = "unauthorized" })
+end
+
+--- Every tool, as the json manifest pi registers at startup.
+---@param token string session token from `crust.extension`
+---@return string json
+function M.manifest(token)
+	if not require("crust.extension").authorized(token) then
+		return unauthorized()
+	end
+
 	local manifest = {}
 	for _, tool in ipairs(TOOLS) do
 		manifest[#manifest + 1] = {
@@ -78,10 +94,15 @@ end
 --- handler's table goes back as json; failures come back as
 --- `{"error": "..."}` instead of raising, so a broken tool never kills the
 --- turn.
+---@param token string session token from `crust.extension`
 ---@param name string
 ---@param args? string json object
 ---@return string json
-function M.call(name, args)
+function M.call(token, name, args)
+	if not require("crust.extension").authorized(token) then
+		return unauthorized()
+	end
+
 	local tool = find(name)
 	if not tool then
 		return vim.json.encode({ error = "unknown tool: " .. tostring(name) })

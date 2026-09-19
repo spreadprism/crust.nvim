@@ -18,6 +18,23 @@ M.DEFAULT_APPEND = table.concat({
 	"for example ```lua instead of a bare fence.",
 }, " ")
 
+--- What crust tells pi about the neovim integration, appended only when
+--- `config.extension.enabled` is true. The socket in CRUST_NVIM_SERVER belongs
+--- to the extension; a model driving it with `nvim --server` by hand can run
+--- arbitrary commands in the user's editor, so it is off limits.
+M.EXTENSION_APPEND = table.concat({
+	"You are running inside neovim (crust.nvim), and a crust extension is loaded.",
+	"For anything about this neovim instance — open buffers, the current file,",
+	"the cursor position, diagnostics — use the nvim_* tools of that extension.",
+	"NEVER talk to the editor yourself: do not run nvim, nvim --server,",
+	"--remote-expr, --remote-send or nvim --headless from the bash tool,",
+	"and never read or use the CRUST_NVIM_SERVER environment variable.",
+	"That socket is the extension's; driving it by hand executes arbitrary",
+	"commands in the user's editor, and neovim rejects calls that do not carry",
+	"the extension's session token anyway.",
+	"If a nvim_* tool cannot answer, say so instead of reaching for the socket.",
+}, " ")
+
 --- Resolve a value that may be a string, a list of strings, or a function
 --- returning either.
 ---@param value string|string[]|fun(): string|string[]|nil
@@ -46,8 +63,9 @@ end
 
 --- Build the prompt part of the pi command line.
 ---@param cfg? Crust.Config.Prompt defaults to `config.get().prompt`
+---@param extension? Crust.Config.Extension defaults to `config.get().extension`
 ---@return string[] args
-function M.args(cfg)
+function M.args(cfg, extension)
 	cfg = cfg or require("crust.config").get().prompt
 
 	local args = {}
@@ -57,22 +75,26 @@ function M.args(cfg)
 		vim.list_extend(args, { "--system-prompt", system })
 	end
 
-	for _, text in ipairs(M.appends(cfg)) do
+	for _, text in ipairs(M.appends(cfg, extension)) do
 		vim.list_extend(args, { "--append-system-prompt", text })
 	end
 
 	return args
 end
 
---- Crust's own block first, then whatever the user appended.
+--- Crust's own blocks first, then whatever the user appended.
 ---@param cfg? Crust.Config.Prompt
+---@param extension? Crust.Config.Extension defaults to `config.get().extension`
 ---@return string[]
-function M.appends(cfg)
+function M.appends(cfg, extension)
 	cfg = cfg or require("crust.config").get().prompt
 
 	local appends = {}
 	if cfg.include_defaults ~= false then
 		appends[#appends + 1] = M.DEFAULT_APPEND
+		if require("crust.extension").enabled(extension) then
+			appends[#appends + 1] = M.EXTENSION_APPEND
+		end
 	end
 	vim.list_extend(appends, M.resolve(cfg.append))
 

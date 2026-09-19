@@ -26,7 +26,32 @@ describe("extension", function()
 
 	it("exports the socket in the process environment", function()
 		local env = Extension.env({ enabled = true, server = "/tmp/crust-test.sock" })
-		assert.are.same({ [Extension.SERVER_ENV] = "/tmp/crust-test.sock" }, env)
+		assert.are.equal("/tmp/crust-test.sock", env[Extension.SERVER_ENV])
+	end)
+
+	describe("token", function()
+		it("is 32 random hex characters, stable for the session", function()
+			local token = Extension.token()
+			assert.are.equal(32, #token)
+			assert.truthy(token:match("^[0-9a-f]+$"))
+			assert.are.equal(token, Extension.token())
+		end)
+
+		it("authorizes only itself", function()
+			assert.True(Extension.authorized(Extension.token()))
+			assert.False(Extension.authorized("nope"))
+			assert.False(Extension.authorized(nil))
+			assert.False(Extension.authorized(""))
+		end)
+
+		it("hands it over in a private one-shot file", function()
+			local env = Extension.env({ enabled = true, server = "/tmp/crust-test.sock" })
+			local path = env[Extension.TOKEN_ENV]
+			assert.is_string(path)
+			assert.are.same({ Extension.token() }, vim.fn.readfile(path))
+			assert.are.equal("600", string.format("%o", vim.uv.fs_stat(path).mode % 512))
+			vim.fn.delete(path)
+		end)
 	end)
 
 	it("starts a neovim server when there is none configured", function()

@@ -1,17 +1,18 @@
 local Tools = require("crust.integrations.extension")
+local Extension = require("crust.extension")
 
 --- Call a tool the way pi does: name plus a json object string.
 ---@param name string
 ---@param args? table
 ---@return table
 local function call(name, args)
-	return vim.json.decode(Tools.call(name, vim.json.encode(args or vim.empty_dict())))
+	return vim.json.decode(Tools.call(Extension.token(), name, vim.json.encode(args or vim.empty_dict())))
 end
 
 describe("extension tools", function()
 	describe("manifest", function()
 		it("describes every tool", function()
-			local manifest = vim.json.decode(Tools.manifest())
+			local manifest = vim.json.decode(Tools.manifest(Extension.token()))
 			assert.is_true(#manifest > 0)
 
 			local names = {}
@@ -28,9 +29,15 @@ describe("extension tools", function()
 	end)
 
 	describe("call", function()
+		it("refuses a caller without the session token", function()
+			assert.are.equal("unauthorized", vim.json.decode(Tools.manifest("nope")).error)
+			assert.are.equal("unauthorized", vim.json.decode(Tools.call("nope", "nvim_context", "{}")).error)
+			assert.are.equal("unauthorized", vim.json.decode(Tools.call(nil, "nvim_context", "{}")).error)
+		end)
+
 		it("reports unknown tools and bad arguments instead of raising", function()
-			assert.is_string(vim.json.decode(Tools.call("nvim_nope", "{}")).error)
-			assert.is_string(vim.json.decode(Tools.call("nvim_context", "not json")).error)
+			assert.is_string(vim.json.decode(Tools.call(Extension.token(), "nvim_nope", "{}")).error)
+			assert.is_string(vim.json.decode(Tools.call(Extension.token(), "nvim_context", "not json")).error)
 		end)
 	end)
 

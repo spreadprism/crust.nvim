@@ -51,6 +51,14 @@ describe("prompt", function()
 		it("can drop crust's block", function()
 			assert.are.same({ "mine" }, Prompt.appends({ append = "mine", include_defaults = false }))
 		end)
+
+		it("warns pi off the socket when the extension is enabled", function()
+			assert.are.same(
+				{ Prompt.DEFAULT_APPEND, Prompt.EXTENSION_APPEND },
+				Prompt.appends({}, { enabled = true })
+			)
+			assert.are.same({ Prompt.DEFAULT_APPEND }, Prompt.appends({}, { enabled = false }))
+		end)
 	end)
 
 	describe("args", function()

@@ -18,8 +18,78 @@ local Tools = require("crust.integrations.extension")
 --- Environment variable the bundled extension reads the socket from.
 M.SERVER_ENV = "CRUST_NVIM_SERVER"
 
+--- Environment variable holding the path of the one-shot token file. The
+--- extension reads it once and deletes it, so the token never sits in the
+--- environment of anything pi spawns later (the bash tool included).
+M.TOKEN_ENV = "CRUST_NVIM_TOKEN_FILE"
+
 ---@type string?
 local socket = nil
+
+---@type string?
+local token = nil
+
+--- 32 random hex characters, from libuv's csprng when available.
+---@return string
+local function random()
+	local ok, bytes = pcall(function()
+		return vim.uv.random(16)
+	end)
+	if ok and type(bytes) == "string" and #bytes == 16 then
+		return (bytes:gsub(".", function(char)
+			return string.format("%02x", char:byte())
+		end))
+	end
+
+	math.randomseed(vim.uv.hrtime() % 2 ^ 31)
+	local out = {}
+	for index = 1, 32 do
+		out[index] = string.format("%x", math.random(0, 15))
+	end
+	return table.concat(out)
+end
+
+--- Secret shared with the bundled extension, generated once per session.
+--- Every call into `crust.integrations.extension` must carry it, so the socket
+--- is useless to anything that did not get the token at startup.
+---@return string
+function M.token()
+	if not token then
+		token = random()
+	end
+	return token
+end
+
+--- True when `candidate` is this session's token.
+---@param candidate any
+---@return boolean
+function M.authorized(candidate)
+	return type(candidate) == "string" and candidate ~= "" and candidate == M.token()
+end
+
+--- Write the token where the extension can pick it up: a fresh file, owner
+--- only, deleted by the extension as soon as it has read it.
+---@return string? path
+local function token_file()
+	local path = vim.fn.tempname()
+	local ok = pcall(vim.fn.writefile, { M.token() }, path)
+	if not ok then
+		vim.notify("crust: could not write the extension token file", vim.log.levels.WARN)
+		return nil
+	end
+
+	pcall(vim.uv.fs_chmod, path, 384) -- 0600
+	vim.api.nvim_create_autocmd("VimLeavePre", {
+		group = vim.api.nvim_create_augroup("crust.extension.token", { clear = false }),
+		callback = function()
+			-- Normally the extension already deleted it; this covers pi never
+			-- starting.
+			pcall(vim.fn.delete, path)
+		end,
+	})
+
+	return path
+end
 
 --- Repository root of this plugin, derived from this file's own path.
 ---@return string
@@ -122,7 +192,14 @@ function M.env(cfg)
 		return {}
 	end
 
-	return { [M.SERVER_ENV] = server }
+	local env = { [M.SERVER_ENV] = server }
+
+	local path = token_file()
+	if path then
+		env[M.TOKEN_ENV] = path
+	end
+
+	return env
 end
 
 --- Start the server early so the socket exists before the first chat, and let
