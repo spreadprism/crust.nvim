@@ -4,6 +4,7 @@
 ---@field private _buf integer
 ---@field private _win integer?
 ---@field private _blocks Crust.Chat.Output.Block[]
+---@field private _title string?
 ---@field private _regions_timer uv.uv_timer_t?
 local Output = {}
 Output.__index = Output
@@ -72,6 +73,37 @@ function Output:open(width)
 	vim.wo[win].winfixwidth = true
 	vim.wo[win].winfixbuf = true
 	self._win = win
+	-- The window is new, so the remembered title has to be drawn again.
+	self:set_title(self._title)
+end
+
+--- Show `title` centered in the window bar, e.g. the session name.
+---@param title string? nil or "" removes the bar
+function Output:set_title(title)
+	self._title = title
+
+	local win = self:win()
+	if not win then
+		return
+	end
+
+	if not title or title == "" then
+		vim.wo[win].winbar = ""
+		return
+	end
+
+	-- Session names are user text, so `%` items have to be escaped.
+	local text = title:gsub("%%", "%%%%")
+	vim.wo[win].winbar = table.concat({
+		"%#" .. Highlights.WINBAR .. "#%=",
+		"%#" .. Highlights.WINBAR_TITLE .. "# " .. text .. " ",
+		"%#" .. Highlights.WINBAR .. "#%=",
+	})
+end
+
+---@return string?
+function Output:title()
+	return self._title
 end
 
 --- Resize the output window, the panel owns the remaining space.

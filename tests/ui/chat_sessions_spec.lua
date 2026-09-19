@@ -336,6 +336,53 @@ describe("ui.chat sessions", function()
 		end)
 	end)
 
+	describe("session title", function()
+		---@param entries table[]
+		---@return string path
+		local function write_session(entries)
+			local path = vim.fn.tempname() .. ".jsonl"
+			local file = assert(io.open(path, "w"))
+			file:write(vim.json.encode({ type = "session", id = "abc", timestamp = "2026-09-01T10:00:00.000Z" }) .. "\n")
+			for _, entry in ipairs(entries) do
+				file:write(vim.json.encode(entry) .. "\n")
+			end
+			file:close()
+			return path
+		end
+
+		---@param data table
+		local function state(data)
+			chat:_on_event({ type = "response", command = "get_state", success = true, data = data })
+		end
+
+		it("is the session name, and lands in the window bar", function()
+			state({ sessionId = "abc", sessionName = "bug hunt" })
+
+			assert.are.equal("bug hunt", chat:session_title())
+			assert.are.equal("bug hunt", chat:output():title())
+		end)
+
+		it("falls back to the first message of the session file", function()
+			local path = write_session({
+				{ type = "message", message = { role = "user", content = text_content("fix the parser") } },
+			})
+
+			state({ sessionId = "abc", sessionFile = path })
+			assert.are.equal("fix the parser", chat:session_title())
+
+			vim.fn.delete(path)
+		end)
+
+		it("falls back to a placeholder for an empty session", function()
+			local path = write_session({})
+
+			state({ sessionId = "abc", sessionFile = path })
+			assert.are.equal("New session", chat:session_title())
+
+			vim.fn.delete(path)
+		end)
+	end)
+
 	describe("clear", function()
 		it("drops the transcript and the tool blocks", function()
 			chat:_on_event({ type = "agent_start" })

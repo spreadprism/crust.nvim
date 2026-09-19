@@ -9,7 +9,7 @@ Because [PI](https://pi.dev) needs a Crust
 
 - Neovim >= 0.13
 - `pi` on `$PATH` (configurable via `bin`)
-- [snacks.nvim](https://github.com/folke/snacks.nvim) (optional, session picker with preview and delete)
+- [snacks.nvim](https://github.com/folke/snacks.nvim) (optional, session picker with delete)
 - [plenary.nvim](https://github.com/nvim-lua/plenary.nvim) (tests only)
 
 ## Commands

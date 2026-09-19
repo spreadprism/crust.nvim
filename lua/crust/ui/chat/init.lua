@@ -36,6 +36,9 @@ local Replay = require("crust.ui.chat.replay")
 
 local WIDTH_RATIO = 0.4
 
+--- Window bar title of a session that has neither a name nor a message yet.
+local NEW_SESSION_TITLE = "New session"
+
 ---@param opts? Crust.Pi.Opts
 ---@return Crust.Chat
 function Chat.new(opts)
@@ -150,6 +153,9 @@ end
 --- Open both windows on the buffers as they are.
 ---@private
 function Chat:_show()
+	-- A title is up before the first `get_state` answers.
+	self._output:set_title(self:session_title())
+
 	if self:is_visible() then
 		self._input:focus()
 		return
@@ -333,11 +339,36 @@ function Chat:refresh_session(callback)
 				name = data.sessionName,
 				file = data.sessionFile,
 			}
+			self:_refresh_title()
 		end
 		if callback then
 			callback(self._session)
 		end
 	end)
+end
+
+--- Title of the live session: its name, else its first message, else a
+--- placeholder. pi only reports the name, so the file is read for the rest.
+---@return string
+function Chat:session_title()
+	if self._session.name and self._session.name ~= "" then
+		return self._session.name
+	end
+
+	if self._session.file then
+		local stored = require("crust.sessions").parse(self._session.file)
+		if stored and stored.first_message ~= "" then
+			return stored.first_message
+		end
+	end
+
+	return NEW_SESSION_TITLE
+end
+
+--- Draw the session title in the output window bar.
+---@private
+function Chat:_refresh_title()
+	self._output:set_title(self:session_title())
 end
 
 --- Switch pi to `path` and redraw the panel with that conversation.
@@ -517,6 +548,7 @@ function Chat:rename(name, callback)
 		end
 
 		self._session.name = name
+		self:_refresh_title()
 		if callback then
 			callback(true)
 		end
@@ -537,6 +569,7 @@ function Chat:_on_event(event)
 	if event.type == "response" and event.command == "get_state" and type(event.data) == "table" then
 		local data = event.data --[[@as Crust.Pi.Data.State]]
 		self._session = { id = data.sessionId, name = data.sessionName, file = data.sessionFile }
+		self:_refresh_title()
 	end
 
 	if event.type == "agent_start" then

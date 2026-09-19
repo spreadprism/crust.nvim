@@ -22,6 +22,8 @@ M.TOOL_BODY_BACKGROUND = "CrustToolBodyBackground"
 M.TOOL_ICON_PENDING = "CrustToolIconPending"
 M.TOOL_ICON_SUCCESS = "CrustToolIconSuccess"
 M.TOOL_ICON_ERROR = "CrustToolIconError"
+M.WINBAR = "CrustWinbar"
+M.WINBAR_TITLE = "CrustWinbarTitle"
 
 --- The 16 ansi colours of tool output, indexed 0-15 like the terminal palette.
 ---@type table<integer, string>
@@ -52,6 +54,8 @@ M.groups = {
 	[M.TOOL_ICON_PENDING] = { link = "DiagnosticWarn" },
 	[M.TOOL_ICON_SUCCESS] = { link = "DiagnosticOk" },
 	[M.TOOL_ICON_ERROR] = { link = "DiagnosticError" },
+	[M.WINBAR] = { link = "WinBar" },
+	[M.WINBAR_TITLE] = { link = "Title" },
 }
 
 -- Ansi colours follow the terminal palette, so they match the colorscheme.

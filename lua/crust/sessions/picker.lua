@@ -1,8 +1,8 @@
 --- Session picker.
 ---
---- Uses snacks.nvim when it is installed, so the raw `.jsonl` can be
---- previewed next to the list and entries can be deleted with the delete
---- key, and falls back to `vim.ui.select`.
+--- Uses snacks.nvim when it is installed, as a plain list of session names
+--- whose entries can be deleted with the delete key, and falls back to
+--- `vim.ui.select`.
 
 local M = {}
 
@@ -19,7 +19,7 @@ M.DELETE_KEY = "<C-d>"
 ---@param session Crust.Session
 ---@return snacks.picker.finder.Item
 local function item(session)
-	return { session = session, file = session.path, text = session.path .. " " .. Sessions.label(session) }
+	return { session = session, text = Sessions.label(session) }
 end
 
 ---@param session Crust.Session
@@ -39,7 +39,10 @@ local function snacks_pick(sessions, opts, on_choice)
 		source = "crust_sessions",
 		title = opts.title or "Crust sessions",
 		items = items,
-		preview = "file",
+		-- Names are all we show: no preview, and the `select` preset hides the
+		-- preview window entirely.
+		preview = "none",
+		layout = { preset = "select" },
 		format = function(entry)
 			local session = entry.session --[[@as Crust.Session]]
 			return {

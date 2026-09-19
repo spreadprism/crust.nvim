@@ -158,6 +158,41 @@ describe("ui.chat.output", function()
 		end)
 	end)
 
+	describe("title", function()
+		after_each(function()
+			out:close()
+		end)
+
+		it("centers the session name in the window bar", function()
+			out:open(40)
+			out:set_title("bug hunt")
+
+			local winbar = vim.wo[assert(out:win())].winbar
+			assert.are.equal("bug hunt", out:title())
+			assert.is_truthy(winbar:find("bug hunt", 1, true))
+			assert.is_truthy(winbar:find(Highlights.WINBAR_TITLE, 1, true))
+		end)
+
+		it("escapes statusline items in the name", function()
+			out:open(40)
+			out:set_title("100% done")
+			assert.is_truthy(vim.wo[assert(out:win())].winbar:find("100%% done", 1, true))
+		end)
+
+		it("clears the bar without a title", function()
+			out:open(40)
+			out:set_title("bug hunt")
+			out:set_title(nil)
+			assert.are.equal("", vim.wo[assert(out:win())].winbar)
+		end)
+
+		it("redraws the title on a window opened later", function()
+			out:set_title("bug hunt")
+			out:open(40)
+			assert.is_truthy(vim.wo[assert(out:win())].winbar:find("bug hunt", 1, true))
+		end)
+	end)
+
 	describe("helpers", function()
 		it("omits the rule for the first message", function()
 			local at = os.time({ year = 2024, month = 3, day = 7, hour = 9, min = 5 })
