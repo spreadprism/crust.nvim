@@ -25,8 +25,14 @@
 ---@field buffers Crust.Context.Buffer[] loaded and listed, panels excluded
 ---@field current Crust.Context.Buffer? omitted when only chat panels are open
 ---@field cursor Crust.Context.Cursor? omitted with `current`
+---@field content string? current buffer text, unsaved changes included
+---@field truncated boolean? true when `content` was cut short
 
 local Filetypes = require("crust.filetypes")
+
+--- Caps on the inlined buffer text, so a huge file cannot flood the context.
+local MAX_LINES = 2000
+local MAX_BYTES = 100 * 1024
 
 --- Filetypes of the chat panels, none of which is useful as context.
 ---@type table<string, true>
@@ -150,9 +156,33 @@ local function buffer_info(buf)
 	}
 end
 
---- Everything the extension injects as context: cwd, listed buffers, and the
---- cursor position of the window the user was last in. `current` and `cursor`
---- are omitted when only chat panels are open.
+--- Text of `buf` as neovim holds it, so unsaved changes are included.
+--- Cut short at `MAX_LINES` lines or `MAX_BYTES` bytes, whichever comes first.
+---@param buf integer
+---@return string content
+---@return boolean truncated
+local function buffer_content(buf)
+	local total = vim.api.nvim_buf_line_count(buf)
+	local lines = vim.api.nvim_buf_get_lines(buf, 0, math.min(total, MAX_LINES), false)
+	local truncated = total > MAX_LINES
+
+	local bytes = 0
+	for i, line in ipairs(lines) do
+		bytes = bytes + #line + 1
+		if bytes > MAX_BYTES then
+			lines = vim.list_slice(lines, 1, i)
+			truncated = true
+			break
+		end
+	end
+
+	return table.concat(lines, "\n"), truncated
+end
+
+--- Everything the extension injects as context: cwd, listed buffers, the
+--- cursor position of the window the user was last in, and the full text of
+--- that buffer. `current`, `cursor` and `content` are omitted when only chat
+--- panels are open.
 ---@return Crust.Context
 local function ctx()
 	local buffers = {}
@@ -173,9 +203,14 @@ local function ctx()
 
 	local window = win()
 	if window then
+		local buf = vim.api.nvim_win_get_buf(window)
 		local cursor = vim.api.nvim_win_get_cursor(window)
-		context.current = buffer_info(vim.api.nvim_win_get_buf(window))
+		context.current = buffer_info(buf)
 		context.cursor = { line = cursor[1], col = cursor[2] + 1 }
+
+		local content, truncated = buffer_content(buf)
+		context.content = content
+		context.truncated = truncated or nil
 	end
 
 	return context
@@ -186,10 +221,11 @@ return {
 	{
 		name = "nvim_context",
 		label = "Neovim Context",
-		description = "Current neovim state: cwd, git branch, listed buffers and the file the user is working in and the cursor position.",
+		description = "Current neovim state: cwd, git branch, listed buffers, the file the user is working in with its cursor position and its full text including unsaved changes. The reported `content` is the live buffer: when it differs from the file on disk the buffer wins, because the user has unsaved changes.",
 		promptSnippet = "Inspect the current neovim editor state",
 		promptGuidelines = {
 			"Use nvim_context when the user says 'this file', 'here' or 'the current buffer'.",
+			"Trust the nvim_context buffer content over what you read from disk: if they differ, the buffer holds unsaved changes and is the truth.",
 		},
 		context = true,
 		parameters = { type = "object", properties = vim.empty_dict() },
