@@ -1,3 +1,7 @@
+-- Specs poke at private fields and pass luassert messages that its
+-- stubs do not declare, none of which matters for the code under test.
+---@diagnostic disable: invisible, deprecated, redundant-parameter, param-type-mismatch
+
 --- Live checks that the prompt and context flags reach a real pi session,
 --- and that pi's own AGENTS.md discovery keeps working next to ours.
 

@@ -1,3 +1,7 @@
+-- Specs poke at private fields and pass luassert messages that its
+-- stubs do not declare, none of which matters for the code under test.
+---@diagnostic disable: invisible, deprecated, redundant-parameter, param-type-mismatch
+
 local Tools = require("crust.ui.chat.tools")
 local Display = require("crust.ui.chat.tools.display")
 local Output = require("crust.ui.chat.output")

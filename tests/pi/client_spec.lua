@@ -1,3 +1,7 @@
+-- Specs poke at private fields and pass luassert messages that its
+-- stubs do not declare, none of which matters for the code under test.
+---@diagnostic disable: invisible, deprecated, redundant-parameter, param-type-mismatch
+
 local Pi = require("crust.pi.client")
 
 local TEST_MODEL = "anthropic/claude-haiku-4-5"
