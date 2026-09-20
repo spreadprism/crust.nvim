@@ -353,25 +353,44 @@ describe("completion.omnifunc", function()
 end)
 
 describe("completion.blink", function()
-	local list, commands
+	local list, commands, ensure
+
+	---@type fun(files: string[])[]
+	local pending
 
 	before_each(function()
-		list, commands = Files.list, Commands.list
+		list, commands, ensure = Files.list, Commands.list, Files.ensure
+		pending = {}
+		-- No scan in the tests: the waiting callbacks are released by hand.
+		Files.ensure = function(_, callback)
+			if callback then
+				pending[#pending + 1] = callback
+			end
+		end
 	end)
 
 	after_each(function()
-		Files.list, Commands.list = list, commands
+		Files.list, Commands.list, Files.ensure = list, commands, ensure
 	end)
+
+	---@param line string
+	---@param row? integer
+	---@return table[] items, integer answers
+	local function complete_all(line, row)
+		local source = require("crust.completion.blink").new()
+		local items, answers = nil, 0
+		source:get_completions({ line = line, cursor = { row or 1, #line } }, function(response)
+			answers = answers + 1
+			items = response.items
+		end)
+		return items, answers
+	end
 
 	---@param line string
 	---@param row? integer
 	---@return table[]
 	local function complete(line, row)
-		local source = require("crust.completion.blink").new()
-		local items
-		source:get_completions({ line = line, cursor = { row or 1, #line } }, function(response)
-			items = response.items
-		end)
+		local items = complete_all(line, row)
 		return items
 	end
 
@@ -403,5 +422,60 @@ describe("completion.blink", function()
 
 	it("answers with nothing outside a trigger", function()
 		assert.are.same({}, complete("plain text"))
+	end)
+
+	it("answers exactly once when the cache has paths", function()
+		-- blink appends the items of every callback, so a second answer would
+		-- show each path twice.
+		stub_files({ "lua/crust/init.lua" })
+
+		local items, answers = complete_all("@lua")
+		assert.are.equal(1, answers)
+		assert.are.equal(1, #items)
+
+		for _, callback in ipairs(pending) do
+			callback({ "lua/crust/init.lua" })
+		end
+		assert.are.equal(1, answers)
+	end)
+
+	it("waits for the first scan when nothing is cached", function()
+		stub_files({})
+
+		local source = require("crust.completion.blink").new()
+		local items, answers = nil, 0
+		source:get_completions({ line = "@lua", cursor = { 1, 4 } }, function(response)
+			answers = answers + 1
+			items = response.items
+		end)
+
+		assert.are.equal(0, answers)
+
+		stub_files({ "lua/crust/init.lua" })
+		for _, callback in ipairs(pending) do
+			callback({ "lua/crust/init.lua" })
+		end
+
+		assert.are.equal(1, answers)
+		-- The prefix stops at the first separator, so the directory is offered.
+		assert.are.equal("@lua/", items[1].label)
+	end)
+
+	it("drops the late answer of a cancelled request", function()
+		stub_files({})
+
+		local source = require("crust.completion.blink").new()
+		local answers = 0
+		local cancel = source:get_completions({ line = "@lua", cursor = { 1, 4 } }, function()
+			answers = answers + 1
+		end)
+
+		cancel()
+		stub_files({ "lua/crust/init.lua" })
+		for _, callback in ipairs(pending) do
+			callback({ "lua/crust/init.lua" })
+		end
+
+		assert.are.equal(0, answers)
 	end)
 end)

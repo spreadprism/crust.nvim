@@ -169,8 +169,6 @@ local function ctx()
 		cwd = cwd,
 		branch = branch(cwd),
 		buffers = buffers,
-		data = vim.fn.stdpath("data"),
-		config = vim.fn.stdpath("config"),
 	}
 
 	local window = win()
@@ -188,7 +186,7 @@ return {
 	{
 		name = "nvim_context",
 		label = "Neovim Context",
-		description = "Current neovim state: cwd, git branch, listed buffers, vim data dir, vim config dir and the file the user is working in and the cursor position.",
+		description = "Current neovim state: cwd, git branch, listed buffers and the file the user is working in and the cursor position.",
 		promptSnippet = "Inspect the current neovim editor state",
 		promptGuidelines = {
 			"Use nvim_context when the user says 'this file', 'here' or 'the current buffer'.",

@@ -94,15 +94,33 @@ function source:get_completions(ctx, callback)
 		return function() end
 	end
 
-	-- Answer from the cache right away, so the popup never waits on a file
-	-- scan, and send a second answer if the refresh brings new paths.
-	callback(response(Completion.complete_files(context.prefix, file_item)))
-
+	-- One request gets exactly one answer: blink appends the items of every
+	-- callback, so answering twice shows each path twice.
 	local cancelled = false
-	Files.ensure(nil, function()
-		if not cancelled then
-			callback(response(Completion.complete_files(context.prefix, file_item)))
+
+	---@param items table[]
+	local function answer(items)
+		if cancelled then
+			return
 		end
+		cancelled = true
+		callback(response(items))
+	end
+
+	local items = Completion.complete_files(context.prefix, file_item)
+	if #items > 0 then
+		-- The cache already has something to show, so the popup never waits on
+		-- a scan. `is_incomplete_*` makes blink ask again on the next
+		-- keystroke, which is when fresh paths appear.
+		answer(items)
+		Files.ensure(nil)
+		return function() end
+	end
+
+	-- Nothing cached yet: wait for the first scan instead of flashing an
+	-- empty popup.
+	Files.ensure(nil, function()
+		answer(Completion.complete_files(context.prefix, file_item))
 	end)
 
 	return function()
