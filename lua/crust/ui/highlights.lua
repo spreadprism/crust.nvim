@@ -25,6 +25,8 @@ M.TOOL_ICON_ERROR = "CrustToolIconError"
 M.WINBAR = "CrustWinbar"
 M.WINBAR_TITLE = "CrustWinbarTitle"
 M.MENTION = "CrustMention"
+M.DIFF_ADD = "CrustDiffAdd"
+M.DIFF_DELETE = "CrustDiffDelete"
 
 --- The 16 ansi colours of tool output, indexed 0-15 like the terminal palette.
 ---@type table<integer, string>
@@ -60,6 +62,9 @@ M.groups = {
 	-- @mentions are blue: Directory is the blue every colorscheme defines,
 	-- and `terminal_color_4` replaces it in `M.setup` when it is set.
 	[M.MENTION] = { link = "Directory" },
+	-- The `+3 -0` counters of edit/write.
+	[M.DIFF_ADD] = { link = "DiffAdd" },
+	[M.DIFF_DELETE] = { link = "DiffDelete" },
 }
 
 -- Ansi colours follow the terminal palette, so they match the colorscheme.

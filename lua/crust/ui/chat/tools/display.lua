@@ -288,8 +288,25 @@ function Display:render(width)
 			local col = #head + 1
 			local text = table.concat(body, " ")
 			lines[1] = head .. " " .. text
-			local syntax = syntax_highlights(text, self.spec.body_lang, 1, col)
-			if syntax then
+			-- Only ranges on the first body line can be placed: the rest were
+			-- joined onto this one and their columns no longer mean anything.
+			local colored = self.spec.body_highlights and self.spec.body_highlights(self)
+			local syntax = not colored and syntax_highlights(text, self.spec.body_lang, 1, col)
+
+			if colored then
+				highlights[#highlights + 1] =
+					{ line = 1, col = col, end_col = #lines[1], group = Highlights.TOOL_BODY_INLINE }
+				for _, range in ipairs(colored) do
+					if range.line == 1 then
+						highlights[#highlights + 1] = {
+							line = 1,
+							col = col + range.col,
+							end_col = col + range.end_col,
+							group = range.group,
+						}
+					end
+				end
+			elseif syntax then
 				vim.list_extend(highlights, syntax)
 			else
 				highlights[#highlights + 1] =

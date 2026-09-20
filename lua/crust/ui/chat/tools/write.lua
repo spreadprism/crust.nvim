@@ -14,6 +14,7 @@ return {
 	end,
 
 	title = diff.title,
+	body_highlights = diff.body_highlights,
 
 	body = function(display)
 		if display.status == "error" then
@@ -24,9 +25,9 @@ return {
 			return nil
 		end
 
-		local added, removed = diff.counts(display)
-		if added then
-			return { "+" .. added .. " -" .. removed }
+		local summary = diff.summary(display)
+		if summary then
+			return { summary }
 		end
 
 		-- No diff came back, fall back to the size of the written file.

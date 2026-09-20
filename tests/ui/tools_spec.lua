@@ -549,6 +549,41 @@ describe("ui.chat.tools", function()
 				assert.are.same({ "> " .. icons.success .. " edit: " .. PATH .. " +1 -1" }, display:lines())
 			end)
 
+			it("colours the counters like a diff", function()
+				local display = display_for({ path = PATH, edits = { { oldText = "a", newText = "b" } } })
+				display:update({
+					type = "tool_execution_end",
+					result = edit_result(" 1 keep\n-2 gone\n-3 gone\n+2 new\n 4 keep"),
+				})
+
+				local render = display:render()
+				local line = render.lines[1]
+
+				---@param group string
+				---@return string?
+				local function text_of(group)
+					for _, hl in ipairs(render.highlights) do
+						if hl.group == group then
+							return line:sub(hl.col + 1, hl.end_col)
+						end
+					end
+					return nil
+				end
+
+				assert.are.equal("+1", text_of("CrustDiffAdd"))
+				assert.are.equal("-2", text_of("CrustDiffDelete"))
+			end)
+
+			it("leaves the fallback body uncoloured", function()
+				local display = display_for({ path = PATH, edits = { { oldText = "a", newText = "b" } } })
+				display:update({ type = "tool_execution_end", result = edit_result(nil) })
+
+				for _, hl in ipairs(display:render().highlights) do
+					assert.are_not.equal("CrustDiffAdd", hl.group)
+					assert.are_not.equal("CrustDiffDelete", hl.group)
+				end
+			end)
+
 			it("counts added and removed lines from the diff", function()
 				local display = display_for({ path = PATH, edits = { { oldText = "a", newText = "b" } } })
 				display:update({

@@ -2,6 +2,8 @@
 
 local M = {}
 
+local Highlights = require("crust.ui.highlights")
+
 --- Added and removed line counts from `result.details.diff`, or nil when there
 --- is none.
 ---@param display Crust.Chat.Tools.Display
@@ -24,6 +26,35 @@ function M.counts(display)
 		end
 	end
 	return added, removed
+end
+
+--- The `+3 -0` counter line, nil when the result carried no diff.
+---@param display Crust.Chat.Tools.Display
+---@return string?
+function M.summary(display)
+	local added, removed = M.counts(display)
+	if not added then
+		return nil
+	end
+	return "+" .. added .. " -" .. removed
+end
+
+--- Colour the two counters like a diff: `+3` as DiffAdd, `-0` as DiffDelete.
+--- Nil for any other body, e.g. "2 edits" or an error message, which keeps
+--- the plain body group.
+---@param display Crust.Chat.Tools.Display
+---@return Crust.Ui.Ansi.Range[]?
+function M.body_highlights(display)
+	local summary = M.summary(display)
+	if not summary or display:body()[1] ~= summary then
+		return nil
+	end
+
+	local added, removed = summary:match("^(%S+) (%S+)$")
+	return {
+		{ line = 1, col = 0, end_col = #added, group = Highlights.DIFF_ADD },
+		{ line = 1, col = #added + 1, end_col = #added + 1 + #removed, group = Highlights.DIFF_DELETE },
+	}
 end
 
 --- Path argument shortened for display, or "" when absent.
