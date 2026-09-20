@@ -3,7 +3,7 @@ if vim.g.loaded_crust then
 end
 vim.g.loaded_crust = true
 
----@type table<string, fun(args: string[])>
+---@type table<string, fun(args: string[], opts: table)>
 local subcommands = {
 	chat = function()
 		require("crust").open()
@@ -23,6 +23,14 @@ local subcommands = {
 	sessions = function()
 		require("crust").sessions()
 	end,
+	last = function()
+		require("crust").session_last()
+	end,
+	-- `:'<,'>Crust send` hands the range over; without one the current file
+	-- (or oil directory) is sent whole.
+	send = function(_, opts)
+		require("crust").send(opts.range > 0 and { first = opts.line1, last = opts.line2 } or { visual = false })
+	end,
 	rename = function(args)
 		local name = table.concat(args, " ")
 		require("crust").rename_session(name ~= "" and name or nil)
@@ -41,9 +49,10 @@ vim.api.nvim_create_user_command("Crust", function(opts)
 		return
 	end
 
-	run(args)
+	run(args, opts)
 end, {
 	nargs = "*",
+	range = true,
 	desc = "crust chat",
 	complete = function(lead, line)
 		-- Only the first argument is a subcommand, the rest is free text.

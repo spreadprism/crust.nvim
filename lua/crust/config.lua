@@ -22,6 +22,10 @@ local M = {}
 ---@field cancel string|false abort the running turn, set to false to unbind
 ---@field sessions string|false open the session picker, normal mode in both panels
 
+---@class Crust.Config.Window
+---@field input_min_height integer smallest height of the prompt window, a taller one set by hand is kept
+---@field auto_insert boolean start insert mode whenever the prompt takes focus
+
 ---@class Crust.Config.Sessions
 ---@field agent_dir? string pi agent directory, defaults to `$PI_CODING_AGENT_DIR` or `~/.pi/agent`
 
@@ -64,6 +68,7 @@ local M = {}
 ---@field spinner string|string[]|Crust.Spinner preset name ("robot", "classic", "dots") or a custom definition
 ---@field status_text string shown next to the spinner while the agent works, empty for the icon alone
 ---@field keymaps Crust.Config.Keymaps
+---@field window Crust.Config.Window chat panel geometry
 ---@field raw_tool_blocks boolean keep tool blocks out of the markdown tree
 M.defaults = {
 	bin = "pi",
@@ -89,6 +94,12 @@ M.defaults = {
 	},
 	sessions = {
 		agent_dir = nil,
+	},
+	window = {
+		input_min_height = 5,
+		-- Opening the chat leaves you in normal mode: a panel that grabs
+		-- insert mode breaks `<leader>` mappings and the jumplist.
+		auto_insert = false,
 	},
 	preload = {
 		sessions = true,

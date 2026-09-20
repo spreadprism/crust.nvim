@@ -113,10 +113,16 @@ describe("ui.chat", function()
 			vim.api.nvim_exec_autocmds("VimResized", {})
 		end)
 
-		it("restores the input height when something stretched it", function()
+		it("keeps an input height set by hand", function()
 			vim.api.nvim_win_set_height(chat:input():win(), 15)
 			chat:resize()
-			assert.are.equal(Input.HEIGHT, vim.api.nvim_win_get_height(chat:input():win()))
+			assert.are.equal(15, vim.api.nvim_win_get_height(chat:input():win()))
+		end)
+
+		it("grows the input back when something squashed it below the minimum", function()
+			vim.api.nvim_win_set_height(chat:input():win(), 2)
+			chat:resize()
+			assert.are.equal(Input.min_height(), vim.api.nvim_win_get_height(chat:input():win()))
 		end)
 
 		it("does nothing when the chat is hidden", function()

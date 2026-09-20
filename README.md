@@ -22,8 +22,41 @@ Because [PI](https://pi.dev) needs a Crust
 | `:Crust new` | Start a new session in the current chat |
 | `:Crust continue` | Open the chat on the most recent session of the cwd |
 | `:Crust sessions` | Pick a past session: `<CR>` resumes, `<C-d>` deletes |
+| `:Crust last` | Switch the chat to the most recent other session |
+| `:Crust send` | Put a mention for the current buffer in the prompt, `:'<,'>Crust send` for a range |
 | `:Crust rename [name]` | Rename the live session, prompts without a name |
 | `:Crust stop` | Close the panel and stop the pi process |
+
+## Sending context
+
+`send` puts a mention for what you are looking at into the prompt — it does
+not submit — and focuses the input:
+
+```lua
+vim.keymap.set({ "n", "x" }, "<leader>ca", function()
+  require("crust").send()
+end, { desc = "crust: send context" })
+```
+
+| Where | Normal mode | Visual mode |
+| --- | --- | --- |
+| file buffer | `@path` | `@path:first-last` |
+| oil buffer | `@dir/` | one `@dir/name` per selected entry |
+
+`smart` is the one-key version: it opens the panel when it is away, and sends
+context once it is up. From inside the chat it just focuses the prompt.
+
+```lua
+vim.keymap.set({ "n", "x" }, "<leader>cc", function()
+  require("crust").smart()
+end, { desc = "crust: open or send context" })
+```
+
+The text is the ordinary `@mention` syntax, so the file expander sends the
+content (or just those lines) to the model while the prompt stays short.
+Mentions are appended, so several calls collect several files. Pass
+`{ visual = true }` when the mapping already left visual mode (`:<C-u>lua …`),
+and `{ buf = n }` to describe another buffer.
 
 ## Sessions
 
@@ -33,6 +66,7 @@ require("crust").toggle({ session = path }) -- resume a specific file
 require("crust").continue()
 require("crust").new_session() -- fresh session, same windows
 require("crust").sessions() -- picker
+require("crust").session_last() -- switch to the previous session, no picker
 require("crust").rename_session("bug hunt")
 require("crust.sessions").list() -- Crust.Session[], newest first
 ```
@@ -118,6 +152,10 @@ require("crust").setup({
   },
   sessions = {
     agent_dir = nil, -- defaults to $PI_CODING_AGENT_DIR or ~/.pi/agent
+  },
+  window = {
+    input_min_height = 5, -- the prompt never gets shorter, `<C-w>+` makes it taller
+    auto_insert = false,  -- true starts insert mode whenever the prompt takes focus
   },
 })
 ```

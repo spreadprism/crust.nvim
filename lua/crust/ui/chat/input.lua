@@ -9,7 +9,20 @@ Input.__index = Input
 
 local scratch = require("crust.ui.scratch")
 
+--- Fallback for `window.input_min_height`.
 Input.HEIGHT = 5
+
+--- Smallest height of the prompt window. A taller one, set with `<C-w>+` or
+--- the mouse, is left alone.
+---@return integer
+function Input.min_height()
+	local window = require("crust.config").get().window or {}
+	local height = window.input_min_height
+	if type(height) ~= "number" or height < 1 then
+		return Input.HEIGHT
+	end
+	return math.floor(height)
+end
 Input.FILETYPE = require("crust.filetypes").input
 
 --- @param on_submit fun(text: string) called with the trimmed buffer content
@@ -54,7 +67,7 @@ function Input:open()
 		return
 	end
 
-	vim.cmd("belowright " .. Input.HEIGHT .. "split")
+	vim.cmd("belowright " .. Input.min_height() .. "split")
 	local win = vim.api.nvim_get_current_win()
 	vim.api.nvim_win_set_buf(win, self._buf)
 	vim.wo[win].wrap = true
@@ -67,11 +80,17 @@ function Input:open()
 	self._win = win
 end
 
---- Pin the input back to its fixed height, e.g. after the editor resized.
+--- Grow the input back to its minimum height when something squashed it,
+--- e.g. a resize of the editor. A height set by hand is kept.
 function Input:restore_height()
 	local win = self:win()
-	if win and vim.api.nvim_win_get_height(win) ~= Input.HEIGHT then
-		vim.api.nvim_win_set_height(win, Input.HEIGHT)
+	if not win then
+		return
+	end
+
+	local min = Input.min_height()
+	if vim.api.nvim_win_get_height(win) < min then
+		vim.api.nvim_win_set_height(win, min)
 	end
 end
 
@@ -83,13 +102,29 @@ function Input:close()
 	self._win = nil
 end
 
-function Input:focus()
+--- Whether focusing the prompt also starts insert mode.
+---@return boolean
+function Input.auto_insert()
+	local window = require("crust.config").get().window or {}
+	return window.auto_insert == true
+end
+
+--- Put the cursor in the prompt. Insert mode is only entered when
+--- `window.auto_insert` asks for it, so the panel does not steal the mode.
+---@param insert? boolean override the config for this call
+function Input:focus(insert)
 	local win = self:win()
 	if not win then
 		return
 	end
+
 	vim.api.nvim_set_current_win(win)
-	vim.cmd("startinsert")
+	if insert == nil then
+		insert = Input.auto_insert()
+	end
+	if insert then
+		vim.cmd("startinsert")
+	end
 end
 
 ---@return string
@@ -103,6 +138,29 @@ end
 ---@param text string
 function Input:set_text(text)
 	vim.api.nvim_buf_set_lines(self._buf, 0, -1, false, vim.split(text, "\n", { plain = true }))
+end
+
+--- Add `text` to the end of the prompt, keeping what is already typed, and
+--- leave the cursor behind it. A space is inserted when the prompt does not
+--- already end in whitespace, so two mentions never run together.
+---@param text string
+function Input:append(text)
+	if text == "" or not vim.api.nvim_buf_is_valid(self._buf) then
+		return
+	end
+
+	local lines = vim.api.nvim_buf_get_lines(self._buf, 0, -1, false)
+	local last = lines[#lines] or ""
+	local separator = (last ~= "" and not last:match("%s$")) and " " or ""
+
+	lines[#lines] = last .. separator .. text
+	lines = vim.split(table.concat(lines, "\n"), "\n", { plain = true })
+	vim.api.nvim_buf_set_lines(self._buf, 0, -1, false, lines)
+
+	local win = self:win()
+	if win then
+		vim.api.nvim_win_set_cursor(win, { #lines, #lines[#lines] })
+	end
 end
 
 function Input:clear()
