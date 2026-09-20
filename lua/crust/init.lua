@@ -18,6 +18,35 @@ function M.open(opts)
 	M.chat():open(opts)
 end
 
+--- Do the slow parts before the user asks for the chat. Opening then costs
+--- two window splits: the buffers exist, treesitter is attached, the history
+--- is parsed and watched.
+---
+--- Everything runs on `vim.schedule`, so a `setup` during startup does not
+--- pay for it, and each step is individually switchable under `preload`.
+---@param cfg? Crust.Config.Preload defaults to `config.get().preload`
+function M.preload(cfg)
+	cfg = cfg or require("crust.config").get().preload
+
+	if cfg.sessions ~= false then
+		require("crust.sessions.cache").warm()
+	end
+
+	if cfg.chat == false then
+		return
+	end
+
+	vim.schedule(function()
+		-- Building the panels touches treesitter and the filetype autocmds of
+		-- whatever markdown plugins are installed, which is the bulk of what
+		-- the first open used to cost.
+		local current = M.chat()
+		if cfg.pi then
+			current:pi():connect()
+		end
+	end)
+end
+
 ---@param opts? Crust.Chat.OpenOpts
 function M.toggle(opts)
 	M.chat():toggle(opts)
@@ -78,12 +107,7 @@ function M.setup(opts)
 	-- Starts the neovim socket now so it exists before the first chat.
 	require("crust.extension").setup()
 
-	-- Parse the session history once, in the background, and watch the
-	-- directory from then on: opening the chat or the picker should never
-	-- wait on disk.
-	if require("crust.config").get().sessions.preload ~= false then
-		require("crust.sessions.cache").warm()
-	end
+	M.preload()
 end
 
 return M

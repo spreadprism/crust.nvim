@@ -24,7 +24,11 @@ local M = {}
 
 ---@class Crust.Config.Sessions
 ---@field agent_dir? string pi agent directory, defaults to `$PI_CODING_AGENT_DIR` or `~/.pi/agent`
----@field preload boolean parse the session history at startup and watch it, so the chat opens instantly
+
+---@class Crust.Config.Preload work done in the background after `setup`, so opening the chat is just two splits
+---@field sessions boolean parse the session history and watch the directory
+---@field chat boolean build the chat buffers: treesitter, keymaps, completion
+---@field pi boolean start the pi process too, before anything is typed
 
 ---@class Crust.Config.Prompt
 ---@field system_prompt? string|fun(): string? replaces pi's own system prompt
@@ -56,6 +60,7 @@ local M = {}
 ---@field labels Crust.Config.Labels message icons, same glyphs as pi.nvim
 ---@field timestamp_format string passed to os.date for message timestamps
 ---@field sessions Crust.Config.Sessions where session history is read from
+---@field preload Crust.Config.Preload startup warm-up
 ---@field spinner string|string[]|Crust.Spinner preset name ("robot", "classic", "dots") or a custom definition
 ---@field status_text string shown next to the spinner while the agent works, empty for the icon alone
 ---@field keymaps Crust.Config.Keymaps
@@ -84,7 +89,11 @@ M.defaults = {
 	},
 	sessions = {
 		agent_dir = nil,
-		preload = true,
+	},
+	preload = {
+		sessions = true,
+		chat = true,
+		pi = false,
 	},
 	log = {
 		enabled = false,

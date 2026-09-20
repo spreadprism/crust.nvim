@@ -40,8 +40,23 @@ require("crust.sessions").list() -- Crust.Session[], newest first
 The history is parsed once at startup, in the background, and the session
 directory is watched from then on, so opening the chat or the picker never
 waits on disk. A lookup still re-globs the directory and reparses only the
-files whose mtime moved, so the cache cannot go stale; set
-`sessions = { preload = false }` to skip the startup pass.
+files whose mtime moved, so the cache cannot go stale.
+
+## Preload
+
+`setup` warms up on `vim.schedule`, after startup: the session history is
+parsed and watched, and the chat buffers are built — treesitter, keymaps and
+completion included. Opening the panel is then two window splits.
+
+```lua
+require("crust").setup({
+  preload = {
+    sessions = true,
+    chat = true,
+    pi = false, -- also start the pi process, before anything is typed
+  },
+})
+```
 
 ## Completion
 
@@ -102,7 +117,6 @@ require("crust").setup({
     cancel = "<C-c>",
   },
   sessions = {
-    preload = true, -- parse the history at startup and watch it for changes
     agent_dir = nil, -- defaults to $PI_CODING_AGENT_DIR or ~/.pi/agent
   },
 })
