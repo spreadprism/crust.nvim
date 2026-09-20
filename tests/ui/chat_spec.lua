@@ -362,6 +362,47 @@ describe("ui.chat", function()
 		end)
 	end)
 
+	describe("input bar", function()
+		it("takes the model from a get_state answer", function()
+			feed({
+				{
+					type = "response",
+					command = "get_state",
+					data = { sessionId = "s", model = { id = "gpt-5", contextWindow = 400000 }, thinkingLevel = "high" },
+				},
+			})
+
+			assert.are.equal("gpt-5", chat:bar():state().model_id)
+			assert.are.equal(400000, chat:bar():state().context_window)
+		end)
+
+		it("bills the messages the agent finishes", function()
+			feed({
+				{ type = "message_end", message = { role = "assistant", usage = { input = 10, cost = { total = 0.5 } } } },
+				{ type = "message_end", message = { role = "user", usage = { input = 10, cost = { total = 9 } } } },
+				{
+					type = "message_end",
+					message = {
+						role = "assistant",
+						stopReason = "aborted",
+						usage = { input = 10, cost = { total = 9 } },
+					},
+				},
+			})
+
+			assert.are.equal(0.5, chat:bar():state().cost)
+		end)
+
+		it("clears the totals with the transcript", function()
+			feed({
+				{ type = "message_end", message = { role = "assistant", usage = { input = 10, cost = { total = 0.5 } } } },
+			})
+			chat:clear()
+
+			assert.are.equal(0, chat:bar():state().cost)
+		end)
+	end)
+
 	describe("tool preview", function()
 		local Preview = require("crust.ui.chat.tools.preview")
 

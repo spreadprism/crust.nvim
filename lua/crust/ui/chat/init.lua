@@ -6,6 +6,7 @@
 ---@field private _output Crust.Chat.Output
 ---@field private _tools Crust.Chat.Tools
 ---@field private _status Crust.Chat.Status
+---@field private _bar Crust.Chat.InputBar
 ---@field private _streaming boolean
 ---@field private _augroup integer?
 ---@field private _closing boolean
@@ -31,6 +32,7 @@ local Input = require("crust.ui.chat.input")
 local Output = require("crust.ui.chat.output")
 local Tools = require("crust.ui.chat.tools")
 local Status = require("crust.ui.chat.status")
+local InputBar = require("crust.ui.chat.inputbar")
 local Highlights = require("crust.ui.highlights")
 local Replay = require("crust.ui.chat.replay")
 
@@ -55,6 +57,9 @@ function Chat.new(opts)
 	self._status = Status.new(self._output)
 	self._input = Input.new(function(text)
 		self:_send(text)
+	end)
+	self._bar = InputBar.new(self._input:buf(), function()
+		return self._input:win()
 	end)
 
 	self:_setup_keymaps()
@@ -88,6 +93,12 @@ end
 ---@return Crust.Chat.Status
 function Chat:status()
 	return self._status
+end
+
+--- Cost and model, drawn along the bottom of the prompt.
+---@return Crust.Chat.InputBar
+function Chat:bar()
+	return self._bar
 end
 
 --- Session pi last reported, refreshed after every state round-trip.
@@ -183,6 +194,9 @@ function Chat:_show()
 
 	self._output:open(math.floor(vim.o.columns * WIDTH_RATIO))
 	self._input:open()
+	-- The bar is pinned to the bottom of the prompt window, so it can only be
+	-- drawn once that window exists.
+	self._bar:render()
 	self:_watch_windows()
 	self._status:render()
 
@@ -252,6 +266,9 @@ function Chat:close()
 	end
 
 	self._status:close()
+	-- The buffers stay, so the bar is only taken off the screen: reopening
+	-- the chat draws it again with the totals it collected.
+	self._bar:clear()
 	self._input:close()
 	self._output:close()
 	self._closing = false
@@ -333,6 +350,8 @@ function Chat:clear()
 	self._status:clear()
 	self._tools:reset()
 	self._output:clear()
+	-- Tokens and cost belong to a conversation, the model does not.
+	self._bar:reset()
 end
 
 --- Make sure the pi process is up, reporting failures in the panel.
@@ -366,6 +385,7 @@ function Chat:refresh_session(callback)
 				file = data.sessionFile,
 			}
 			self:_refresh_title()
+			self._bar:update_state(data)
 		end
 		if callback then
 			callback(self._session)
@@ -444,6 +464,12 @@ function Chat:load_session(path, callback)
 
 			local messages = response.data --[[@as Crust.Pi.Data.Messages?]]
 			Replay.render(messages and messages.messages or {}, self._output, self._tools)
+			-- A resumed session brings its own bill with it.
+			for _, message in ipairs(messages and messages.messages or {}) do
+				if message.role == "assistant" then
+					self._bar:add_usage(message.usage)
+				end
+			end
 			finish(true)
 		end)
 		if messages_err then
@@ -643,6 +669,7 @@ function Chat:_on_event(event)
 		local data = event.data --[[@as Crust.Pi.Data.State]]
 		self._session = { id = data.sessionId, name = data.sessionName, file = data.sessionFile }
 		self:_refresh_title()
+		self._bar:update_state(data)
 	end
 
 	if event.type == "agent_start" then
@@ -653,6 +680,16 @@ function Chat:_on_event(event)
 		self._streaming = false
 		self._status:clear()
 		self._output:append("\n")
+	elseif event.type == "message_end" then
+		-- The bill of the message that just finished. An aborted or failed
+		-- one reports stale numbers, pi's own status line skips those too.
+		local message = event.message
+		if type(message) == "table" and message.role == "assistant" then
+			local stop = message.stopReason
+			if stop ~= "aborted" and stop ~= "error" then
+				self._bar:add_usage(message.usage)
+			end
+		end
 	elseif event.type == "message_update" then
 		local ev = event.assistantMessageEvent
 		if ev and ev.type == "text_delta" and ev.delta then

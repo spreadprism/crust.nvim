@@ -42,6 +42,15 @@ local M = {}
 ---@class Crust.Config.Output
 ---@field viewport Crust.Config.Output.Viewport
 
+---@class Crust.Config.InputBar.Layout
+---@field left (string|Crust.Chat.InputBar.Component)[] drawn from the left edge
+---@field right (string|Crust.Chat.InputBar.Component)[] pushed against the right one
+
+---@class Crust.Config.InputBar the bar along the bottom of the prompt
+---@field enabled boolean
+---@field layout Crust.Config.InputBar.Layout component names, literal separators or functions
+---@field components table<string, table> per-component options: `icon`, and `warn`/`error` levels
+
 ---@class Crust.Config.Window
 ---@field input_min_height integer smallest height of the prompt window, a taller one set by hand is kept
 ---@field auto_insert boolean start insert mode whenever the prompt takes focus
@@ -89,6 +98,7 @@ local M = {}
 ---@field status_text string shown next to the spinner while the agent works, empty for the icon alone
 ---@field keymaps Crust.Config.Keymaps
 ---@field window Crust.Config.Window chat panel geometry
+---@field input_bar Crust.Config.InputBar cost and model under the prompt
 ---@field output Crust.Config.Output scrollback rendering
 ---@field raw_tool_blocks boolean keep tool blocks out of the markdown tree
 M.defaults = {
@@ -139,6 +149,22 @@ M.defaults = {
 				above = "⋯ %d earlier messages ⋯",
 				below = "⋯ %d newer messages ⋯",
 			},
+		},
+	},
+	input_bar = {
+		enabled = true,
+		-- What the turn costs on one side, what is answering on the other.
+		layout = {
+			left = { "cost" },
+			right = { "model" },
+		},
+		components = {
+			cost = { icon = "\u{f155}" },
+			model = { icon = "󰚩" },
+			tokens = { icon = "\u{f0ec}" },
+			cache = { icon = "󰆼" },
+			context = { icon = "\u{f0e4}", warn = 70, error = 90 },
+			thinking = { icon = "󰟶" },
 		},
 	},
 	window = {
@@ -206,10 +232,27 @@ function M.enabled(value)
 	return value == true
 end
 
+--- Lists are values, not tables to merge into: a user layout of one
+--- component would otherwise keep the tail of the default one.
+---@param config Crust.Config
+---@param options table
+local function restore_lists(config, options)
+	local layout = options.input_bar and options.input_bar.layout
+	if type(layout) ~= "table" then
+		return
+	end
+	for _, side in ipairs({ "left", "right" }) do
+		if type(layout[side]) == "table" then
+			config.input_bar.layout[side] = vim.deepcopy(layout[side])
+		end
+	end
+end
+
 ---@return Crust.Config
 function M.get()
 	if M.config == nil then
 		M.config = vim.tbl_deep_extend("force", M.defaults, M.options or {})
+		restore_lists(M.config, M.options or {})
 	end
 
 	return M.config

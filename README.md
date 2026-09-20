@@ -112,6 +112,56 @@ require("blink.cmp").setup({
 })
 ```
 
+## Prompt bar
+
+The last row of the prompt window carries a bar: what the session has cost so
+far on the left, the model answering on the right.
+
+```
+ $0.284                                            󰚩 claude-opus-4-6
+```
+
+It is drawn as virtual lines on the input buffer, so it costs no window and no
+'laststatus'. Everything in it uses `CrustInputBar` (blue, the mention colour),
+with `CrustInputBarWarning` and `CrustInputBarError` for components that pass
+their thresholds.
+
+The two sides are lists of component names, literal separators or your own
+functions. A component that returns `nil` hides itself and the separators
+around it.
+
+```lua
+require("crust").setup({
+  input_bar = {
+    enabled = true,
+    layout = {
+      left = { "cost", " · ", "context" },
+      right = { "model", " · ", "thinking" },
+    },
+    components = {
+      cost = { icon = "\u{f155}", warn = 5, error = 10 }, -- dollars
+      context = { icon = "\u{f0e4}", warn = 70, error = 90 }, -- percent full
+      model = { icon = "󰚩" },
+    },
+  },
+})
+```
+
+Built-ins: `cost` (`$0.284`), `model`, `context` (`63.9%/200k`), `tokens`
+(`↑3.8k ↓58k`), `cache` (`R7.2M W416k`) and `thinking` (`xhigh`). A custom
+component is a function of the bar state:
+
+```lua
+left = {
+  function(state)
+    return state.cost > 1 and ("spent $%.2f"):format(state.cost) or nil
+  end,
+},
+```
+
+Cost and tokens accumulate over the session and reset with it; the model and
+thinking level come from pi's `get_state`.
+
 ## Tool calls
 
 A tool call in the scrollback is one line: the command cut to the panel width

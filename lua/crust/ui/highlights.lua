@@ -25,6 +25,9 @@ M.TOOL_ICON_ERROR = "CrustToolIconError"
 M.WINBAR = "CrustWinbar"
 M.WINBAR_TITLE = "CrustWinbarTitle"
 M.MENTION = "CrustMention"
+M.INPUT_BAR = "CrustInputBar"
+M.INPUT_BAR_WARNING = "CrustInputBarWarning"
+M.INPUT_BAR_ERROR = "CrustInputBarError"
 M.ELISION = "CrustElision"
 M.DIFF_ADD = "CrustDiffAdd"
 M.DIFF_DELETE = "CrustDiffDelete"
@@ -63,6 +66,11 @@ M.groups = {
 	-- @mentions are blue: Directory is the blue every colorscheme defines,
 	-- and `terminal_color_4` replaces it in `M.setup` when it is set.
 	[M.MENTION] = { link = "Directory" },
+	-- The prompt bar (cost, model) is blue like the mentions above it, and
+	-- picks up `terminal_color_4` in `M.setup` the same way.
+	[M.INPUT_BAR] = { link = "Directory" },
+	[M.INPUT_BAR_WARNING] = { link = "DiagnosticWarn" },
+	[M.INPUT_BAR_ERROR] = { link = "DiagnosticError" },
 	-- "⋯ 128 earlier messages ⋯": a hint, not transcript text.
 	[M.ELISION] = { link = "Comment" },
 	-- The `+3 -0` counters of edit/write. `Added`/`Removed` carry a foreground,
@@ -123,6 +131,7 @@ function M.setup(force)
 		local blue = vim.g.terminal_color_4
 		if type(blue) == "string" and blue ~= "" then
 			vim.api.nvim_set_hl(0, M.MENTION, { fg = blue, ctermfg = 4, default = true })
+			vim.api.nvim_set_hl(0, M.INPUT_BAR, { fg = blue, ctermfg = 4, default = true })
 		end
 	end
 
