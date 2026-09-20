@@ -72,6 +72,29 @@ require("crust").rename_session("bug hunt")
 require("crust.sessions").list() -- Crust.Session[], newest first
 ```
 
+## Models
+
+```lua
+require("crust").model() -- picker over pi's configured models
+require("crust").model("anthropic/claude-haiku-4-5") -- switch, no picker
+require("crust").model("haiku") -- any unambiguous id, name or fragment
+```
+
+The list is `get_available_models` from the running instance, so it is
+whatever that pi is configured with. A query is matched against the
+`provider/id` form of pi's `--model` flag first, then the bare id, then the
+display name, then any unambiguous part of those; an ambiguous one reports
+its candidates instead of guessing. Without a query it opens the picker —
+snacks.nvim when installed, `vim.ui.select` otherwise — with the live model
+marked. The prompt bar picks the new model up from the following
+`get_state`.
+
+```lua
+vim.keymap.set("n", "<leader>cm", function()
+  require("crust").model()
+end, { desc = "crust: switch model" })
+```
+
 The history is parsed once at startup, in the background, and the session
 directory is watched from then on, so opening the chat or the picker never
 waits on disk. A lookup still re-globs the directory and reparses only the

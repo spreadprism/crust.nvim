@@ -614,6 +614,100 @@ function Chat:_on_sessions_deleted(paths)
 	end
 end
 
+--- Switch the model, or pick one when `query` is omitted.
+---
+--- The list comes from the running process, so `query` can be the
+--- `provider/id` pi takes on the command line, a bare model id, a display
+--- name, or any unambiguous part of those.
+---@param query? string
+---@param callback? fun(ok: boolean, err: string?)
+function Chat:model(query, callback)
+	if not self:_ensure_running() then
+		if callback then
+			callback(false, "pi process is not running")
+		end
+		return
+	end
+
+	---@param message string
+	local function fail(message)
+		self._output:error(message)
+		if callback then
+			callback(false, message)
+		end
+	end
+
+	require("crust.models").fetch(self._pi, function(models, err)
+		if err then
+			return fail(err)
+		end
+		if #models == 0 then
+			return fail("pi reported no available models")
+		end
+
+		if query then
+			local model, resolve_err = require("crust.models").resolve(models, query)
+			if not model then
+				return fail(resolve_err or "unknown model")
+			end
+			return self:_set_model(model, callback)
+		end
+
+		require("crust.models.picker").select(models, {
+			current = self:_current_model_spec(),
+		}, function(model)
+			if not model then
+				if callback then
+					callback(false, "cancelled")
+				end
+				return
+			end
+			self:_set_model(model, callback)
+		end)
+	end)
+end
+
+--- `provider/id` of the model the bar last saw, for marking the picker.
+---@private
+---@return string?
+function Chat:_current_model_spec()
+	local state = self._bar:state()
+	if not state.model_id or not state.model_provider then
+		return nil
+	end
+	return state.model_provider .. "/" .. state.model_id
+end
+
+---@private
+---@param model Crust.Pi.Model
+---@param callback? fun(ok: boolean, err: string?)
+function Chat:_set_model(model, callback)
+	local _, err = self._pi:send(Command.set_model(model.provider, model.id), function(event)
+		if event.success == false then
+			local message = event.error or ("failed to switch to " .. model.provider .. "/" .. model.id)
+			self._output:error(message)
+			if callback then
+				callback(false, message)
+			end
+			return
+		end
+
+		-- Switching may change the thinking level too, so the bar is refreshed
+		-- from the state rather than from the model alone.
+		self:refresh_session()
+		if callback then
+			callback(true)
+		end
+	end)
+
+	if err then
+		self._output:error(err)
+		if callback then
+			callback(false, err)
+		end
+	end
+end
+
 --- Rename the current session. Prompts when `name` is omitted.
 ---@param name? string
 ---@param callback? fun(ok: boolean, err: string?)

@@ -153,6 +153,20 @@ function M.new_session()
 	current:new_session()
 end
 
+--- Switch the model of the live chat, or pick one when `query` is omitted.
+---
+--- `query` is matched against the models pi is configured with: the
+--- `provider/id` form of its `--model` flag, a bare id, a display name, or
+--- an unambiguous part of those. Without one it opens the model picker,
+--- snacks.nvim when installed and `vim.ui.select` otherwise.
+---@param query? string e.g. "anthropic/claude-haiku-4-5" or "haiku"
+---@param callback? fun(ok: boolean, err: string?)
+function M.model(query, callback)
+	local current = M.chat()
+	current:open()
+	current:model(query, callback)
+end
+
 --- Rename the live session, prompting when `name` is omitted.
 ---@param name? string
 function M.rename_session(name)

@@ -14,6 +14,7 @@
 ---@class Crust.Chat.InputBar.State  what the components draw from
 ---@field model_id string? e.g. "claude-opus-4-6"
 ---@field model_name string? human name, when pi reports one
+---@field model_provider string? e.g. "anthropic"
 ---@field context_window integer?
 ---@field reasoning boolean the model supports thinking levels
 ---@field thinking_level string?
@@ -155,6 +156,7 @@ local function empty_state()
 	return {
 		model_id = nil,
 		model_name = nil,
+		model_provider = nil,
 		context_window = nil,
 		reasoning = false,
 		thinking_level = nil,
@@ -246,6 +248,7 @@ function InputBar:update_state(data)
 	local model = data.model
 	self._state.model_id = model and model.id or nil
 	self._state.model_name = model and model.name or nil
+	self._state.model_provider = model and model.provider or nil
 	self._state.context_window = model and model.contextWindow or nil
 	self._state.reasoning = model ~= nil and model.reasoning == true
 	self._state.thinking_level = data.thinkingLevel
