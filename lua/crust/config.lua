@@ -35,6 +35,9 @@ local M = {}
 ---@field path? string pi extension handed to `-e`, defaults to the bundled one
 ---@field server? string neovim socket to reuse, defaults to `v:servername` or a fresh `serverstart()`
 
+---@class Crust.Config.Expansion
+---@field enabled boolean|fun(): boolean rewrite prompts for the model, e.g. `@path` into the file content
+
 ---@class Crust.Config.Context
 ---@field enabled boolean keep pi's own AGENTS.md and CLAUDE.md discovery
 ---@field files? string|string[]|fun(): string|string[]|nil extra context files, appended after the discovered ones
@@ -44,6 +47,7 @@ local M = {}
 ---@field bin string
 ---@field prompt Crust.Config.Prompt
 ---@field context Crust.Config.Context
+---@field expansion Crust.Config.Expansion
 ---@field extension Crust.Config.Extension
 ---@field log Crust.Config.Log
 ---@field render_markdown Crust.Config.RenderMarkdown
@@ -93,6 +97,9 @@ M.defaults = {
 		enabled = true,
 		files = nil,
 		append = nil,
+	},
+	expansion = {
+		enabled = true,
 	},
 	extension = {
 		enabled = false,

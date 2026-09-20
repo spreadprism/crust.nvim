@@ -268,10 +268,13 @@ function Chat:_send(text)
 
 	self._input:clear()
 	self._output:header(require("crust.config").get().labels.user, Highlights.USER_TITLE)
-	self._output:append(text .. "\n")
+	-- The scrollback shows what was typed; pi gets the expanded prompt, so a
+	-- `@path` mention stays one blue word here and is a whole file there.
+	self._output:append_message(text .. "\n")
+	local prompt = require("crust.expansion").expand(text)
 
 	local _, err = self._pi:send(
-		Command.prompt(text, self._streaming and { streaming_behavior = "followUp" } or nil),
+		Command.prompt(prompt, self._streaming and { streaming_behavior = "followUp" } or nil),
 		function(event)
 			if event.success == false then
 				self._output:error(event.error or "prompt failed")

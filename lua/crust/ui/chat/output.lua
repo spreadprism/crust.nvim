@@ -16,6 +16,7 @@ local scratch = require("crust.ui.scratch")
 local Highlights = require("crust.ui.highlights")
 local RenderMarkdown = require("crust.integrations.render_markdown")
 local Regions = require("crust.ui.regions")
+local Mentions = require("crust.ui.mentions")
 
 --- Quiet period before the markdown regions are recomputed.
 local REGIONS_DEBOUNCE_MS = 50
@@ -376,6 +377,16 @@ function Output:header(label, group, timestamp)
 	end
 	self:_highlight(head_row, 0, #label, group)
 	self:_highlight(head_row, #label + 1, #head, Highlights.TIMESTAMP)
+end
+
+--- Append message text and colour the @mentions it contains. Used for user
+--- messages, where the mentions the input highlighted have to survive the
+--- move into the scrollback.
+---@param text string
+function Output:append_message(text)
+	local first = math.max(vim.api.nvim_buf_line_count(self._buf) - 1, 0)
+	self:append(text)
+	Mentions.highlight(self._buf, first, -1)
 end
 
 ---@param message string

@@ -23,6 +23,9 @@ function Input.new(on_submit)
 
 	-- `<C-x><C-u>` completes @mentions and /commands without blink.cmp.
 	require("crust.completion.omnifunc").attach(self._buf)
+	-- Colour @mentions as they are typed.
+	require("crust.ui.highlights").setup()
+	require("crust.ui.mentions").attach(self._buf)
 
 	vim.keymap.set({ "n", "i" }, "<CR>", function()
 		self:submit()

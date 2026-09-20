@@ -56,6 +56,40 @@ require("blink.cmp").setup({
 })
 ```
 
+## Expansion
+
+A prompt is rewritten on its way to pi. `@justfile` is sent as the mention
+plus the file's current content in a fenced block — from the buffer when the
+file is open, so unsaved edits count. The chat output still shows what you
+typed, one blue `CrustMention`.
+
+The mention sits above the fence, so it is the path — the fence carries only
+the filetype, plus the resolved `lines=` when a range was asked for:
+
+```
+@lua/crust/init.lua:40      one line
+@lua/crust/init.lua:40-80   a range, clamped to the file
+@lua/crust/init.lua:40-     from there to the end
+```
+
+Add your own with two functions, `trigger` (which spans do I claim) and
+`expansion` (what replaces this span, nil to leave it):
+
+```lua
+require("crust.expansion").register({
+  name = "diff",
+  trigger = function(text)
+    local first, last = text:find("@diff", 1, true)
+    return first and { { first = first, last = last, text = "@diff" } } or {}
+  end,
+  expansion = function()
+    return "```diff\n" .. vim.fn.system("git diff") .. "\n```"
+  end,
+})
+```
+
+Turn the whole thing off with `expansion = { enabled = false }`.
+
 ```lua
 require("crust").setup({
   keymaps = {

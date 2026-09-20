@@ -24,6 +24,7 @@ M.TOOL_ICON_SUCCESS = "CrustToolIconSuccess"
 M.TOOL_ICON_ERROR = "CrustToolIconError"
 M.WINBAR = "CrustWinbar"
 M.WINBAR_TITLE = "CrustWinbarTitle"
+M.MENTION = "CrustMention"
 
 --- The 16 ansi colours of tool output, indexed 0-15 like the terminal palette.
 ---@type table<integer, string>
@@ -56,6 +57,9 @@ M.groups = {
 	[M.TOOL_ICON_ERROR] = { link = "DiagnosticError" },
 	[M.WINBAR] = { link = "WinBar" },
 	[M.WINBAR_TITLE] = { link = "Title" },
+	-- @mentions are blue: Directory is the blue every colorscheme defines,
+	-- and `terminal_color_4` replaces it in `M.setup` when it is set.
+	[M.MENTION] = { link = "Directory" },
 }
 
 -- Ansi colours follow the terminal palette, so they match the colorscheme.
@@ -96,6 +100,11 @@ function M.setup(force)
 			if type(color) == "string" and color ~= "" then
 				vim.api.nvim_set_hl(0, M.ANSI[index], { fg = color, ctermfg = index, default = true })
 			end
+		end
+
+		local blue = vim.g.terminal_color_4
+		if type(blue) == "string" and blue ~= "" then
+			vim.api.nvim_set_hl(0, M.MENTION, { fg = blue, ctermfg = 4, default = true })
 		end
 	end
 

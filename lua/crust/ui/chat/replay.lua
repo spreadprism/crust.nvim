@@ -114,7 +114,7 @@ function M.render(messages, output, tools)
 					Highlights.USER_TITLE,
 					seconds(message.timestamp)
 				)
-				output:append(text .. "\n")
+				output:append_message(text .. "\n")
 			end
 		elseif message.role == "assistant" then
 			assistant(output, tools, message)
