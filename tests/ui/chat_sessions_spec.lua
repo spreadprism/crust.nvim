@@ -230,15 +230,23 @@ describe("ui.chat sessions", function()
 			end, sent))
 		end)
 
-		it("does nothing when the cwd has no sessions", function()
+		it("keeps the empty session and stays quiet when the cwd has none", function()
+			local notified = false
+			local notify = vim.notify
+			vim.notify = function()
+				notified = true
+			end
+
 			local ok, err
 			chat:continue(function(success, message)
 				ok, err = success, message
 			end)
 
+			vim.notify = notify
 			assert.is_false(ok)
 			assert.are.equal("no previous session", err)
 			assert.are.same({}, sent)
+			assert.is_false(notified)
 		end)
 	end)
 

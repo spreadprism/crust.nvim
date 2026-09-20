@@ -434,6 +434,7 @@ function Chat:load_session(path, callback)
 end
 
 --- Load the most recent session of the cwd, like `pi --continue`.
+--- A cwd without history simply keeps the empty session pi started with.
 ---@param callback? fun(ok: boolean, err: string?)
 function Chat:continue(callback)
 	local path = self:_continue_path()
@@ -459,12 +460,9 @@ function Chat:_continue_path()
 		exclude = not self._resumed and self._session.file or nil,
 	})
 
-	if not session then
-		vim.notify("crust: no previous session for " .. vim.fn.getcwd(), vim.log.levels.INFO)
-		return nil
-	end
-
-	return session.path
+	-- Nothing to continue is not a problem: the chat stays on the fresh
+	-- session pi created, so there is nothing to report either.
+	return session and session.path or nil
 end
 
 --- Start a fresh session in this chat, wiping the panel.
