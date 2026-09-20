@@ -110,10 +110,11 @@ function M.parse(path)
 	}
 end
 
---- Sessions of `cwd`, newest first.
+--- Sessions of `cwd`, newest first, parsing every file. `M.list` is the one
+--- to call: it answers from the cache and only reparses what changed.
 ---@param cwd? string
 ---@return Crust.Session[]
-function M.list(cwd)
+function M.scan(cwd)
 	---@type Crust.Session[]
 	local sessions = {}
 
@@ -130,6 +131,13 @@ function M.list(cwd)
 	return sessions
 end
 
+--- Sessions of `cwd`, newest first.
+---@param cwd? string
+---@return Crust.Session[]
+function M.list(cwd)
+	return require("crust.sessions.cache").list(cwd)
+end
+
 ---@class Crust.Sessions.LastOpts
 ---@field cwd? string
 ---@field exclude? string session file to skip, usually the live one
@@ -141,23 +149,8 @@ function M.last(opts)
 	opts = opts or {}
 	local exclude = opts.exclude and vim.fs.normalize(opts.exclude) or nil
 
-	-- Sorted by mtime first so only the candidates are read: parsing every
-	-- file here would stall the chat panel on big histories.
-	---@type { path: string, modified: integer }[]
-	local files = {}
-	for _, path in ipairs(vim.fn.glob(M.dir(opts.cwd) .. "/*.jsonl", false, true)) do
-		if not exclude or vim.fs.normalize(path) ~= exclude then
-			files[#files + 1] = { path = path, modified = vim.fn.getftime(path) }
-		end
-	end
-
-	table.sort(files, function(a, b)
-		return a.modified > b.modified
-	end)
-
-	for _, file in ipairs(files) do
-		local session = M.parse(file.path)
-		if session then
+	for _, session in ipairs(M.list(opts.cwd)) do
+		if not exclude or vim.fs.normalize(session.path) ~= exclude then
 			return session
 		end
 	end

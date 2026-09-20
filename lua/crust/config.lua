@@ -24,6 +24,7 @@ local M = {}
 
 ---@class Crust.Config.Sessions
 ---@field agent_dir? string pi agent directory, defaults to `$PI_CODING_AGENT_DIR` or `~/.pi/agent`
+---@field preload boolean parse the session history at startup and watch it, so the chat opens instantly
 
 ---@class Crust.Config.Prompt
 ---@field system_prompt? string|fun(): string? replaces pi's own system prompt
@@ -83,6 +84,7 @@ M.defaults = {
 	},
 	sessions = {
 		agent_dir = nil,
+		preload = true,
 	},
 	log = {
 		enabled = false,

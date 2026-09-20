@@ -55,6 +55,7 @@ function M.stop()
 		chat:stop()
 		chat = nil
 	end
+	require("crust.sessions.cache").stop()
 end
 
 ---@param opts? Crust.Config
@@ -76,6 +77,13 @@ function M.setup(opts)
 
 	-- Starts the neovim socket now so it exists before the first chat.
 	require("crust.extension").setup()
+
+	-- Parse the session history once, in the background, and watch the
+	-- directory from then on: opening the chat or the picker should never
+	-- wait on disk.
+	if require("crust.config").get().sessions.preload ~= false then
+		require("crust.sessions.cache").warm()
+	end
 end
 
 return M

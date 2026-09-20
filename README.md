@@ -37,6 +37,12 @@ require("crust").rename_session("bug hunt")
 require("crust.sessions").list() -- Crust.Session[], newest first
 ```
 
+The history is parsed once at startup, in the background, and the session
+directory is watched from then on, so opening the chat or the picker never
+waits on disk. A lookup still re-globs the directory and reparses only the
+files whose mtime moved, so the cache cannot go stale; set
+`sessions = { preload = false }` to skip the startup pass.
+
 ## Completion
 
 The chat input completes `@path` mentions against the project files and
@@ -96,6 +102,7 @@ require("crust").setup({
     cancel = "<C-c>",
   },
   sessions = {
+    preload = true, -- parse the history at startup and watch it for changes
     agent_dir = nil, -- defaults to $PI_CODING_AGENT_DIR or ~/.pi/agent
   },
 })
