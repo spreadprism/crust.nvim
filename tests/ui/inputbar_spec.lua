@@ -191,6 +191,61 @@ describe("ui.chat.inputbar", function()
 		end)
 	end)
 
+	describe("icons", function()
+		it("draws the configured icon before the component", function()
+			configure({ layout = { left = { "model" }, right = {} }, components = { model = { icon = "M" } } })
+			bar:update_state({ model = { id = "gpt-5" } })
+
+			assert.are.equal("M gpt-5", text())
+		end)
+
+		it("drops the default icon when the component table gives none", function()
+			-- `icon = nil` is the spelling everybody reaches for, and in Lua it
+			-- is an empty table: the merge must not bring the default back.
+			configure({ layout = { left = { "model" }, right = {} }, components = { model = { icon = nil } } })
+			bar:update_state({ model = { id = "gpt-5" } })
+
+			assert.are.equal("gpt-5", text())
+		end)
+
+		it("drops it for false and for an empty string too", function()
+			for _, value in ipairs({ false, "" }) do
+				configure({
+					layout = { left = { "model" }, right = {} },
+					components = { model = { icon = value } },
+				})
+				bar:update_state({ model = { id = "gpt-5" } })
+
+				assert.are.equal("gpt-5", text())
+			end
+		end)
+
+		it("keeps the other options of the component it unsets the icon of", function()
+			configure({
+				layout = { left = { "context" }, right = {} },
+				components = { context = { icon = nil } },
+			})
+			bar:update_state({ model = { id = "gpt-5", contextWindow = 1000 } })
+			bar:add_usage({ input = 950 })
+
+			-- The default warn/error levels survive, only the icon is gone.
+			assert.are.equal("95.0%/1.0k", text())
+			assert.are.equal(Highlights.INPUT_BAR_ERROR, bar:line(60)[1][2])
+		end)
+
+		it("leaves the components the user did not mention alone", function()
+			configure({
+				layout = { left = { "cost" }, right = { "model" } },
+				components = { cost = { icon = "$$" } },
+			})
+			bar:update_state({ model = { id = "gpt-5" } })
+			bar:add_usage(usage(1.5))
+
+			assert.is_truthy(text():find("$$ $1.500", 1, true))
+			assert.is_truthy(text():find("󰚩 gpt-5", 1, true))
+		end)
+	end)
+
 	describe("layout", function()
 		it("takes a whole list from the user, not just its first entries", function()
 			configure({ layout = { left = { "model" }, right = { "cost" } } })

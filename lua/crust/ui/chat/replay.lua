@@ -102,8 +102,8 @@ end
 
 --- Write a whole conversation into an empty output panel.
 ---
---- The whole replay is one batch: the panel collects the messages into its
---- transcript and draws once, instead of redrawing per message.
+--- The whole replay is one batch: the panel writes the messages and follows
+--- and re-renders once at the end, instead of doing both per message.
 ---@param messages Crust.Pi.Message[]?
 ---@param output Crust.Chat.Output
 ---@param tools Crust.Chat.Tools

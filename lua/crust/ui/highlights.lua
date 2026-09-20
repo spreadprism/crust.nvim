@@ -28,7 +28,6 @@ M.MENTION = "CrustMention"
 M.INPUT_BAR = "CrustInputBar"
 M.INPUT_BAR_WARNING = "CrustInputBarWarning"
 M.INPUT_BAR_ERROR = "CrustInputBarError"
-M.ELISION = "CrustElision"
 M.DIFF_ADD = "CrustDiffAdd"
 M.DIFF_DELETE = "CrustDiffDelete"
 
@@ -71,8 +70,6 @@ M.groups = {
 	[M.INPUT_BAR] = { link = "Directory" },
 	[M.INPUT_BAR_WARNING] = { link = "DiagnosticWarn" },
 	[M.INPUT_BAR_ERROR] = { link = "DiagnosticError" },
-	-- "⋯ 128 earlier messages ⋯": a hint, not transcript text.
-	[M.ELISION] = { link = "Comment" },
 	-- The `+3 -0` counters of edit/write. `Added`/`Removed` carry a foreground,
 	-- while most colorschemes give DiffAdd/DiffDelete a background only, which
 	-- would leave the counters in the surrounding text colour. `M.setup` falls

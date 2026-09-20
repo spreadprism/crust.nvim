@@ -5,10 +5,10 @@
 --- What a tool call actually looks like *in the buffer*.
 ---
 --- `tools_spec` checks what a display renders; these specs check that the
---- render survives the trip through the transcript and the viewport. It does
---- not always: rewriting rows drops their extmarks, and a block appended
---- under another one continues its last line, which used to leave the call
---- above plain white (no icon, no title, no shading).
+--- render survives the trip into the buffer. It does not always: rewriting
+--- rows drops their extmarks, and a block appended under another one
+--- continues its last line, which used to leave the call above plain white
+--- (no icon, no title, no shading).
 
 local Highlights = require("crust.ui.highlights")
 local Output = require("crust.ui.chat.output")
@@ -67,14 +67,14 @@ describe("ui.chat.tools highlighting", function()
 	---@param id string
 	---@return integer 0-based row of the call's first line
 	local function row_of(id)
-		return assert(out:view():block_row(assert(tools._blocks[id])))
+		return assert(out:block_row(assert(tools._blocks[id])))
 	end
 
 	--- Highlight groups drawn on a buffer row, background included.
 	---@param row integer 0-based
 	---@return string[]
 	local function groups(row)
-		local marks = vim.api.nvim_buf_get_extmarks(out:buf(), out:view().ns, { row, 0 }, { row, -1 }, {
+		local marks = vim.api.nvim_buf_get_extmarks(out:buf(), Output.hl_ns, { row, 0 }, { row, -1 }, {
 			details = true,
 		})
 		local found = {}
@@ -193,7 +193,9 @@ describe("ui.chat.tools highlighting", function()
 			out:header("󰚩", Highlights.AGENT_TITLE, 0)
 			finish("w", "write", { path = "a.lua", content = "one\n" }, "wrote a.lua")
 
-			local row = assert(out:view():row(out:transcript():count()))
+			-- The header is the line the message opens with: the first row of
+			-- the call, minus its blank line and the header row itself.
+			local row = row_of("w") - 2
 			assert_group(row, Highlights.AGENT_TITLE)
 			assert_group(row, Highlights.TIMESTAMP)
 		end)
@@ -211,13 +213,13 @@ describe("ui.chat.tools highlighting", function()
 			assert_group(row, Highlights.TOOL_TITLE)
 		end)
 
-		it("draws the same highlights after the viewport redraws the message", function()
+		it("keeps the calls highlighted when a new message is opened under them", function()
 			out:header("󰚩", Highlights.AGENT_TITLE, 0)
 			finish("w", "write", { path = "a.lua", content = "one\n" }, "wrote a.lua")
 			finish("e", "edit", { path = "a.lua", edits = { {} } }, "ok", { diff = "+one" })
 
 			local before = { groups(row_of("w")), groups(row_of("e")) }
-			out:view():rebuild()
+			out:header("", Highlights.USER_TITLE, 0)
 
 			assert.are.same(before[1], groups(row_of("w")))
 			assert.are.same(before[2], groups(row_of("e")))

@@ -23,25 +23,6 @@ local M = {}
 ---@field sessions string|false open the session picker, normal mode in both panels
 ---@field preview string|false expand the tool call under the cursor in a float, output panel only
 
----@class Crust.Config.Output.Markers
----@field above string format of the "older messages" hint, `%d` is the count
----@field below string format of the "newer messages" hint
-
----@class Crust.Config.Output.Keep messages pinned whatever the cursor looks at
----@field first integer oldest messages always drawn, 0 pins none
----@field last integer newest messages always drawn, 0 pins none
-
----@class Crust.Config.Output.Viewport only the messages around the cursor are drawn
----@field enabled boolean false keeps the whole transcript in the buffer
----@field max_sections integer messages drawn at once, the one in view always is
----@field max_lines integer soft cap on the drawn lines, never splits a message
----@field guard_lines integer rows from an elision marker that pull more in
----@field keep Crust.Config.Output.Keep head and tail pinned outside the budget
----@field markers Crust.Config.Output.Markers
-
----@class Crust.Config.Output
----@field viewport Crust.Config.Output.Viewport
-
 ---@class Crust.Config.InputBar.Layout
 ---@field left (string|Crust.Chat.InputBar.Component)[] drawn from the left edge
 ---@field right (string|Crust.Chat.InputBar.Component)[] pushed against the right one
@@ -50,6 +31,8 @@ local M = {}
 ---@field enabled boolean
 ---@field layout Crust.Config.InputBar.Layout component names, literal separators or functions
 ---@field components table<string, table> per-component options: `icon`, and `warn`/`error` levels
+--- A component table given in `setup` replaces the default one's icon: the
+--- icon is whatever that table says, and `nil` (or `false`) means none.
 
 ---@class Crust.Config.Window
 ---@field input_min_height integer smallest height of the prompt window, a taller one set by hand is kept
@@ -99,7 +82,6 @@ local M = {}
 ---@field keymaps Crust.Config.Keymaps
 ---@field window Crust.Config.Window chat panel geometry
 ---@field input_bar Crust.Config.InputBar cost and model under the prompt
----@field output Crust.Config.Output scrollback rendering
 ---@field raw_tool_blocks boolean keep tool blocks out of the markdown tree
 M.defaults = {
 	bin = "pi",
@@ -129,28 +111,6 @@ M.defaults = {
 	sessions = {
 		agent_dir = nil,
 	},
-	output = {
-		-- A session grows without bound, a buffer that holds all of it makes
-		-- every write, every markdown pass and every highlight sweep grow with
-		-- it. Only the messages around the one in view are materialized.
-		viewport = {
-			enabled = true,
-			max_sections = 40,
-			max_lines = 4000,
-			guard_lines = 20,
-			-- The start of a conversation (the task) and its newest messages
-			-- are what one scrolls back for, so they are drawn whatever the
-			-- cursor sits on, on top of the budget above.
-			keep = {
-				first = 4,
-				last = 4,
-			},
-			markers = {
-				above = "⋯ %d earlier messages ⋯",
-				below = "⋯ %d newer messages ⋯",
-			},
-		},
-	},
 	input_bar = {
 		enabled = true,
 		-- What the turn costs on one side, what is answering on the other.
@@ -159,7 +119,7 @@ M.defaults = {
 			right = { "model" },
 		},
 		components = {
-			cost = { icon = "\u{f155}" },
+			cost = { icon = nil },
 			model = { icon = "󰚩" },
 			tokens = { icon = "\u{f0ec}" },
 			cache = { icon = "󰆼" },
@@ -248,11 +208,34 @@ local function restore_lists(config, options)
 	end
 end
 
+--- `icon = nil` has to mean "no icon".
+---
+--- A missing key and a `nil` value are the same table in Lua, so a deep
+--- merge cannot see the difference and the default icon would survive
+--- `cost = { icon = nil }` — the one spelling everybody reaches for. So a
+--- component table given in `setup` owns its icon: whatever it says is the
+--- icon, and saying nothing means none. The other keys still merge, so
+--- `cost = { icon = nil }` keeps the default `warn`/`error` levels.
+---@param config Crust.Config
+---@param options table
+local function restore_icons(config, options)
+	local components = options.input_bar and options.input_bar.components
+	if type(components) ~= "table" then
+		return
+	end
+	for name, opts in pairs(components) do
+		if type(opts) == "table" and type(config.input_bar.components[name]) == "table" then
+			config.input_bar.components[name].icon = opts.icon
+		end
+	end
+end
+
 ---@return Crust.Config
 function M.get()
 	if M.config == nil then
 		M.config = vim.tbl_deep_extend("force", M.defaults, M.options or {})
 		restore_lists(M.config, M.options or {})
+		restore_icons(M.config, M.options or {})
 	end
 
 	return M.config

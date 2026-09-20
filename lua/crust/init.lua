@@ -139,8 +139,8 @@ function M.smart(opts)
 	return M.send(opts)
 end
 
---- Open the full conversation in a scratch buffer, the panel only shows the
---- messages around the cursor.
+--- Copy the conversation into a scratch buffer, for searching or yanking
+--- outside the read-only panel.
 ---@return integer buf
 function M.transcript()
 	return M.chat():transcript()

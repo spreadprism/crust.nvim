@@ -144,7 +144,7 @@ describe("ui.chat.tools.preview", function()
 			bash(out, tools, "ls", "a.lua")
 
 			local block = assert(tools._blocks["a"])
-			local row = assert(out:view():block_row(block))
+			local row = assert(out:block_row(block))
 			assert.are.equal(tools:display("a"), tools:display_at(out:block_at(row)))
 		end)
 

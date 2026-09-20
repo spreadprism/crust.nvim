@@ -557,10 +557,10 @@ function Chat:new_session(callback)
 	end
 end
 
---- Open the whole conversation in an ordinary buffer.
+--- Copy the conversation into an ordinary buffer.
 ---
---- The panel only ever holds the messages around the cursor, so searching,
---- yanking or writing out the full transcript needs a buffer of its own.
+--- The panel is read-only and lives in its own split, so searching, yanking
+--- or writing the conversation out is easier from a normal buffer.
 ---@return integer buf
 function Chat:transcript()
 	local lines = self._output:lines()

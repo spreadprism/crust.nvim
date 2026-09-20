@@ -429,7 +429,7 @@ describe("ui.chat", function()
 			call("echo hi")
 
 			local block = assert(chat._tools:display("a"))
-			local row = assert(chat:output():view():block_row(chat._tools._blocks["a"]))
+			local row = assert(chat:output():block_row(chat._tools._blocks["a"]))
 			vim.api.nvim_win_set_cursor(assert(chat:output():win()), { row + 1, 0 })
 
 			assert.is_true(chat:preview_tool())

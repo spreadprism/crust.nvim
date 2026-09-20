@@ -170,6 +170,11 @@ require("crust").setup({
 })
 ```
 
+A component table you pass owns its icon: whatever it says is the icon, and
+saying nothing means none — `cost = { icon = nil }` (or `false`, or `""`)
+draws the cost bare, while its `warn`/`error` levels keep their defaults.
+Components you do not mention keep theirs.
+
 Built-ins: `cost` (`$0.284`), `model`, `context` (`63.9%/200k`), `tokens`
 (`↑3.8k ↓58k`), `cache` (`R7.2M W416k`) and `thinking` (`xhigh`). A custom
 component is a function of the bar state:
@@ -237,43 +242,6 @@ require("crust.expansion").register({
 ```
 
 Turn the whole thing off with `expansion = { enabled = false }`.
-
-## Long sessions
-
-The panel does not keep the whole conversation in its buffer. The transcript
-lives in memory and only the messages around the one you are looking at are
-drawn, so a session with a thousand messages writes, highlights and renders
-as fast as a fresh one. What is left out is announced by a marker line:
-
-```
-⋯ 128 earlier messages ⋯
-```
-
-The first and the last few messages are always drawn, wherever you are in
-the session: the task it started from and what the agent just did stay one
-keystroke away, with a marker in between for what is skipped.
-
-Scrolling into a marker pulls the neighbouring messages in, and the view
-sticks to the newest message again as soon as the cursor is back at the
-bottom. `:Crust transcript` opens the whole conversation in an ordinary
-buffer when you want to search or yank across all of it.
-
-```lua
-require("crust").setup({
-  output = {
-    viewport = {
-      enabled = true,     -- false keeps the whole session in the buffer
-      max_sections = 40,  -- messages drawn at once
-      max_lines = 4000,   -- soft cap, a message is never split
-      guard_lines = 20,   -- distance to a marker that pulls more in
-      keep = {
-        first = 5,        -- oldest messages always drawn, 0 pins none
-        last = 5,         -- newest messages always drawn, 0 pins none
-      },
-    },
-  },
-})
-```
 
 ```lua
 require("crust").setup({
