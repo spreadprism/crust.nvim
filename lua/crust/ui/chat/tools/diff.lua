@@ -68,4 +68,17 @@ function M.title(display)
 	return vim.fn.fnamemodify(path, ":~:.")
 end
 
+--- The unified diff pi answered with, for the preview float. The result text
+--- of a write is a confirmation line, the diff is the interesting part.
+---@param display Crust.Chat.Tools.Display
+---@return string?, string? text, treesitter language
+function M.preview_body(display)
+	local details = display.result and display.result.details
+	local diff = details and details.diff
+	if type(diff) ~= "string" or diff == "" then
+		return nil, nil
+	end
+	return diff, "diff"
+end
+
 return M

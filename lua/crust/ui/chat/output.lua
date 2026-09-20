@@ -223,8 +223,9 @@ end
 function Output:append_block(lines, highlights, line_highlights, compact)
 	local block, patch = self._transcript:append_block(lines, highlights, line_highlights, compact)
 
+	-- The patch draws the block's highlights, along with those of everything
+	-- else it rewrote.
 	if not self._batch and self._view:patch(patch) then
-		self._view:apply_block(block)
 		self:_refresh_regions()
 		self:_follow()
 		self:_render_markdown()
@@ -243,24 +244,34 @@ function Output:replace_block(block, lines, highlights, line_highlights)
 		return
 	end
 
-	-- Clear before rewriting: marks on replaced lines drift to the end of
-	-- the new text, where a later clear would no longer cover them.
-	local row = not self._batch and self._view:block_row(block) or nil
-	if row then
-		self._view:clear_rows(row, row + block.count)
-	end
-
+	-- The view clears the rewritten rows before it writes them and draws the
+	-- block again afterwards, so nothing has to be cleared here.
 	local patch = self._transcript:replace_block(block, lines, highlights, line_highlights)
 	if not patch or self._batch then
 		return
 	end
 
 	if self._view:patch(patch) then
-		self._view:apply_block(block)
 		self:_refresh_regions()
 		self:_follow()
 		self:_render_markdown()
 	end
+end
+
+--- Tool block drawn on a row, nil when the row holds prose. Defaults to the
+--- row under the cursor, which is what the preview key asks for.
+---@param row? integer 0-based
+---@return Crust.Chat.Output.Block?
+function Output:block_at(row)
+	if not row then
+		local win = self:win()
+		if not win then
+			return nil
+		end
+		row = vim.api.nvim_win_get_cursor(win)[1] - 1
+	end
+
+	return self._view:block_at(row)
 end
 
 --- True when nothing but blank lines follows the block, so the next block

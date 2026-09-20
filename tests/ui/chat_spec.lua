@@ -361,4 +361,77 @@ describe("ui.chat", function()
 			assert.are.equal("followUp", sent.streamingBehavior)
 		end)
 	end)
+
+	describe("tool preview", function()
+		local Preview = require("crust.ui.chat.tools.preview")
+
+		---@param command string
+		local function call(command)
+			feed({
+				{ type = "agent_start" },
+				{
+					type = "tool_execution_end",
+					toolCallId = "a",
+					toolName = "bash",
+					args = { command = command },
+					result = result("output"),
+				},
+			})
+		end
+
+		after_each(function()
+			Preview.close()
+		end)
+
+		it("opens the call under the cursor", function()
+			chat:open()
+			call("echo hi")
+
+			local block = assert(chat._tools:display("a"))
+			local row = assert(chat:output():view():block_row(chat._tools._blocks["a"]))
+			vim.api.nvim_win_set_cursor(assert(chat:output():win()), { row + 1, 0 })
+
+			assert.is_true(chat:preview_tool())
+			-- luassert's `assert` passes its arguments back, so the window id
+			-- has to be pinned down before it reaches an api call.
+			local win = assert(Preview.win())
+			local buf = vim.api.nvim_win_get_buf(win)
+			assert.are.same(Preview.content(block).lines, vim.api.nvim_buf_get_lines(buf, 0, -1, false))
+		end)
+
+		it("does nothing on a line without a tool call", function()
+			chat:open()
+			call("echo hi")
+			vim.api.nvim_win_set_cursor(assert(chat:output():win()), { 1, 0 })
+
+			assert.is_false(chat:preview_tool())
+			assert.is_nil(Preview.win())
+		end)
+
+		it("binds the preview key in the output panel only", function()
+			---@param buf integer
+			---@return boolean
+			local function bound(buf)
+				for _, map in ipairs(vim.api.nvim_buf_get_keymap(buf, "n")) do
+					if map.lhs == "K" then
+						return true
+					end
+				end
+				return false
+			end
+
+			assert.is_true(bound(chat:output():buf()))
+			assert.is_false(bound(chat:input():buf()))
+		end)
+
+		it("can be unbound", function()
+			config.options = { keymaps = { preview = false } }
+			config.config = nil
+
+			local other = Chat.new()
+			for _, map in ipairs(vim.api.nvim_buf_get_keymap(other:output():buf(), "n")) do
+				assert.are_not.equal("K", map.lhs)
+			end
+		end)
+	end)
 end)

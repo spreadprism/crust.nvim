@@ -119,6 +119,26 @@ function Chat:_setup_keymaps()
 	map(keymaps.sessions, { "n" }, "crust: sessions", function()
 		self:sessions()
 	end)
+
+	-- Only the scrollback has tool blocks to preview, and `K` in the prompt
+	-- is the user's own keyword lookup.
+	if keymaps.preview then
+		vim.keymap.set("n", keymaps.preview, function()
+			self:preview_tool()
+		end, { buffer = self._output:buf(), desc = "crust: preview the tool call" })
+	end
+end
+
+--- Open the tool call under the cursor in a floating window: the full title
+--- and the full output, neither cut to the panel.
+---@return boolean opened false when the cursor is not on a tool block
+function Chat:preview_tool()
+	local display = self._tools:display_at(self._output:block_at())
+	if not display then
+		return false
+	end
+
+	return require("crust.ui.chat.tools.preview").open(display) ~= nil
 end
 
 ---@return integer out_buf, integer in_buf

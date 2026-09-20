@@ -7,6 +7,7 @@
 ---@class Crust.Chat.Tools
 ---@field private _displays table<string, Crust.Chat.Tools.Display>
 ---@field private _blocks table<string, Crust.Chat.Output.Block>
+---@field private _by_block table<integer, Crust.Chat.Tools.Display> block id -> call, for the cursor lookup
 ---@field private _last { block: Crust.Chat.Output.Block, inline: boolean }?
 local Tools = {}
 Tools.__index = Tools
@@ -76,6 +77,7 @@ function Tools.new()
 	local self = setmetatable({}, Tools)
 	self._displays = {}
 	self._blocks = {}
+	self._by_block = {}
 	self._last = nil
 	return self
 end
@@ -84,6 +86,13 @@ end
 ---@return Crust.Chat.Tools.Display?
 function Tools:display(id)
 	return self._displays[id]
+end
+
+--- The call a rendered block belongs to, e.g. the one under the cursor.
+---@param block Crust.Chat.Output.Block?
+---@return Crust.Chat.Tools.Display?
+function Tools:display_at(block)
+	return block and self._by_block[block.id] or nil
 end
 
 --- Write or rewrite the tool call block in the output panel.
@@ -123,12 +132,14 @@ function Tools:render(output, event)
 
 	block = output:append_block(render.lines, render.highlights, render.line_highlights, compact)
 	self._blocks[id] = block
+	self._by_block[block.id] = display
 	self._last = { block = block, inline = display:is_inline() }
 end
 
 function Tools:reset()
 	self._displays = {}
 	self._blocks = {}
+	self._by_block = {}
 	self._last = nil
 end
 

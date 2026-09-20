@@ -441,8 +441,19 @@ function Viewport:patch(patch)
 		return false
 	end
 
+	-- Everything the rewrite touches is redrawn: `nvim_buf_set_lines` drops
+	-- the marks of the rows it replaces and drags the rest to the end of the
+	-- new text, so they are cleared first and put back after.
+	local touched = self:_touched(patch)
 	local first = row + patch.first - 1
+
+	if touched then
+		self:clear_rows(row + touched.first - 1, row + math.max(touched.last, patch.first + patch.removed - 1))
+	end
 	self:_set(first, first + patch.removed, patch.lines)
+	if touched then
+		self:_redraw(patch.section, touched)
+	end
 
 	local delta = #patch.lines - patch.removed
 	if delta ~= 0 then
@@ -495,6 +506,80 @@ function Viewport:reach(top, bottom, guard)
 	return nil
 end
 
+---@class Crust.Chat.Viewport.Touched  what a patch has to redraw
+---@field first integer 1-based first section line covered
+---@field last integer 1-based last section line covered
+---@field blocks Crust.Chat.Output.Block[]
+---@field marks Crust.Chat.Mark[]
+
+--- Marks and blocks a rewrite lands on, nil when it lands on plain text.
+---
+--- A patch routinely reaches back into a finished call: appending a block
+--- continues the last line of the section, which is the previous block's
+--- last line whenever the two are stacked without a gap. The range is grown
+--- to whole blocks, they are redrawn as a unit.
+---@private
+---@param patch Crust.Chat.Patch
+---@return Crust.Chat.Viewport.Touched?
+function Viewport:_touched(patch)
+	local section = self._transcript:section(patch.section)
+	if not section then
+		return nil
+	end
+
+	local first = patch.first
+	-- The rewrite covers the removed rows and the ones written in their place.
+	local last = patch.first + math.max(patch.removed, #patch.lines) - 1
+
+	---@type Crust.Chat.Output.Block[]
+	local blocks = {}
+	for _, block in ipairs(section.blocks) do
+		local block_last = block.first + block.count - 1
+		if block_last >= first and block.first <= last then
+			blocks[#blocks + 1] = block
+			first = math.min(first, block.first)
+			last = math.max(last, block_last)
+		end
+	end
+
+	---@type Crust.Chat.Mark[]
+	local marks = {}
+	for _, mark in ipairs(section.marks) do
+		if mark.line >= first and mark.line <= last then
+			marks[#marks + 1] = mark
+		end
+	end
+
+	if #blocks == 0 and #marks == 0 then
+		return nil
+	end
+
+	return { first = first, last = last, blocks = blocks, marks = marks }
+end
+
+--- Draw the marks and blocks a patch overwrote, in their new places.
+---@private
+---@param index integer section
+---@param touched Crust.Chat.Viewport.Touched
+function Viewport:_redraw(index, touched)
+	local row = self._rows[index]
+	if not row then
+		return
+	end
+
+	for _, mark in ipairs(touched.marks) do
+		vim.api.nvim_buf_set_extmark(self._buf, Viewport.ns, row + mark.line - 1, mark.col, {
+			end_col = mark.end_col,
+			hl_group = mark.group,
+			priority = mark.priority,
+		})
+	end
+
+	for _, block in ipairs(touched.blocks) do
+		self:apply_block(block)
+	end
+end
+
 --- Clear the highlights of a row range, e.g. before a block is rewritten.
 ---@param first integer 0-based
 ---@param last integer exclusive
@@ -513,6 +598,23 @@ function Viewport:block_row(block)
 		return nil
 	end
 	return row + block.first - 1
+end
+
+--- Block covering a buffer row, nil when the row is prose or a marker.
+---@param row integer 0-based
+---@return Crust.Chat.Output.Block?
+function Viewport:block_at(row)
+	for index, at in pairs(self._rows) do
+		local section = self._transcript:section(index)
+		for _, block in ipairs(section and section.blocks or {}) do
+			local first = at + block.first - 1
+			if row >= first and row < first + block.count then
+				return block
+			end
+		end
+	end
+
+	return nil
 end
 
 --- Draw a block's highlights, wherever it sits now.

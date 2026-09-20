@@ -22,6 +22,8 @@
 ---@field inline? boolean|fun(display: Crust.Chat.Tools.Display): boolean render the body on the title line instead of under it
 ---@field title_lang? string treesitter language used to highlight the title
 ---@field body_lang? string treesitter language used to highlight the body
+---@field preview_title? fun(display: Crust.Chat.Tools.Display): string? full title for the float, defaults to the rendered one, may span lines
+---@field preview_body? fun(display: Crust.Chat.Tools.Display): string?, string? text and its treesitter language for the float, defaults to the ansi-parsed result
 ---@field title_prefix? string written before the title, e.g. "> "
 ---@field body_prefix? string extra indent before each body line, default none
 ---@field block_prefix? string written before every line of the call, default "> ", "" disables it

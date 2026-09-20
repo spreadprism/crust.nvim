@@ -57,6 +57,12 @@ return {
 		end
 		return (command:gsub("%s+", " "))
 	end,
+	-- The preview has room for the command as it was written, newlines,
+	-- heredocs and all.
+	preview_title = function(display)
+		local command = display.args.command
+		return type(command) == "string" and command ~= "" and command or nil
+	end,
 	body = function(display)
 		local text = display:result_text()
 		if not text or text == "" then

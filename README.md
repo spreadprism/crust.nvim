@@ -112,6 +112,25 @@ require("blink.cmp").setup({
 })
 ```
 
+## Tool calls
+
+A tool call in the scrollback is one line: the command cut to the panel width
+and, under it, the tail of the output. Press `K` over a call to open the whole
+thing in a floating window — the full command, highlighted with the tool's
+language, and the full output with its terminal colours. `q`, `<Esc>` or
+leaving the float closes it.
+
+File writes show their diff there instead of the "wrote …" line. Tool specs
+decide what the float holds with `preview_title` and `preview_body`.
+
+```lua
+require("crust").setup({
+  keymaps = {
+    preview = "K", -- false leaves `K` alone in the output panel
+  },
+})
+```
+
 ## Expansion
 
 A prompt is rewritten on its way to pi. `@justfile` is sent as the mention
@@ -187,6 +206,8 @@ require("crust").setup({
 require("crust").setup({
   keymaps = {
     cancel = "<C-c>",
+    sessions = "<leader>s",
+    preview = "K", -- expand the tool call under the cursor
   },
   sessions = {
     agent_dir = nil, -- defaults to $PI_CODING_AGENT_DIR or ~/.pi/agent

@@ -15,6 +15,7 @@ return {
 
 	title = diff.title,
 	body_highlights = diff.body_highlights,
+	preview_body = diff.preview_body,
 
 	body = function(display)
 		if display.status == "error" then

@@ -21,6 +21,7 @@ local M = {}
 ---@class Crust.Config.Keymaps
 ---@field cancel string|false abort the running turn, set to false to unbind
 ---@field sessions string|false open the session picker, normal mode in both panels
+---@field preview string|false expand the tool call under the cursor in a float, output panel only
 
 ---@class Crust.Config.Output.Markers
 ---@field above string format of the "older messages" hint, `%d` is the count
@@ -111,6 +112,9 @@ M.defaults = {
 	keymaps = {
 		cancel = "<C-c>",
 		sessions = "<leader>s",
+		-- `K` over a tool block: the scrollback shows a cut title and a tail of
+		-- the output, the float shows the call whole.
+		preview = "K",
 	},
 	sessions = {
 		agent_dir = nil,
