@@ -23,6 +23,9 @@ local subcommands = {
 	sessions = function()
 		require("crust").sessions()
 	end,
+	transcript = function()
+		require("crust").transcript()
+	end,
 	last = function()
 		require("crust").session_last()
 	end,

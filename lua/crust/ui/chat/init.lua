@@ -511,6 +511,28 @@ function Chat:new_session(callback)
 	end
 end
 
+--- Open the whole conversation in an ordinary buffer.
+---
+--- The panel only ever holds the messages around the cursor, so searching,
+--- yanking or writing out the full transcript needs a buffer of its own.
+---@return integer buf
+function Chat:transcript()
+	local lines = self._output:lines()
+
+	local buf = vim.api.nvim_create_buf(true, true)
+	vim.bo[buf].buftype = "nofile"
+	vim.bo[buf].swapfile = false
+	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+	vim.bo[buf].modified = false
+	vim.bo[buf].filetype = "markdown"
+	pcall(vim.api.nvim_buf_set_name, buf, "crust://transcript/" .. (self._session.id or self._id))
+
+	vim.cmd("tabnew")
+	vim.api.nvim_win_set_buf(vim.api.nvim_get_current_win(), buf)
+
+	return buf
+end
+
 --- Pick a past session and load it. The picker can also delete sessions.
 function Chat:sessions()
 	require("crust.sessions.picker").select({

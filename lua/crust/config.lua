@@ -22,6 +22,20 @@ local M = {}
 ---@field cancel string|false abort the running turn, set to false to unbind
 ---@field sessions string|false open the session picker, normal mode in both panels
 
+---@class Crust.Config.Output.Markers
+---@field above string format of the "older messages" hint, `%d` is the count
+---@field below string format of the "newer messages" hint
+
+---@class Crust.Config.Output.Viewport only the messages around the cursor are drawn
+---@field enabled boolean false keeps the whole transcript in the buffer
+---@field max_sections integer messages drawn at once, the one in view always is
+---@field max_lines integer soft cap on the drawn lines, never splits a message
+---@field guard_lines integer rows from an elision marker that pull more in
+---@field markers Crust.Config.Output.Markers
+
+---@class Crust.Config.Output
+---@field viewport Crust.Config.Output.Viewport
+
 ---@class Crust.Config.Window
 ---@field input_min_height integer smallest height of the prompt window, a taller one set by hand is kept
 ---@field auto_insert boolean start insert mode whenever the prompt takes focus
@@ -69,6 +83,7 @@ local M = {}
 ---@field status_text string shown next to the spinner while the agent works, empty for the icon alone
 ---@field keymaps Crust.Config.Keymaps
 ---@field window Crust.Config.Window chat panel geometry
+---@field output Crust.Config.Output scrollback rendering
 ---@field raw_tool_blocks boolean keep tool blocks out of the markdown tree
 M.defaults = {
 	bin = "pi",
@@ -94,6 +109,21 @@ M.defaults = {
 	},
 	sessions = {
 		agent_dir = nil,
+	},
+	output = {
+		-- A session grows without bound, a buffer that holds all of it makes
+		-- every write, every markdown pass and every highlight sweep grow with
+		-- it. Only the messages around the one in view are materialized.
+		viewport = {
+			enabled = true,
+			max_sections = 40,
+			max_lines = 4000,
+			guard_lines = 20,
+			markers = {
+				above = "⋯ %d earlier messages ⋯",
+				below = "⋯ %d newer messages ⋯",
+			},
+		},
 	},
 	window = {
 		input_min_height = 5,

@@ -139,6 +139,13 @@ function M.smart(opts)
 	return M.send(opts)
 end
 
+--- Open the full conversation in a scratch buffer, the panel only shows the
+--- messages around the cursor.
+---@return integer buf
+function M.transcript()
+	return M.chat():transcript()
+end
+
 --- Start a new session in the current chat, clearing the panel.
 function M.new_session()
 	local current = M.chat()

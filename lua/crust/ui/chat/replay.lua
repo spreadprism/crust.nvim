@@ -101,10 +101,25 @@ local function assistant(output, tools, message)
 end
 
 --- Write a whole conversation into an empty output panel.
+---
+--- The whole replay is one batch: the panel collects the messages into its
+--- transcript and draws once, instead of redrawing per message.
 ---@param messages Crust.Pi.Message[]?
 ---@param output Crust.Chat.Output
 ---@param tools Crust.Chat.Tools
 function M.render(messages, output, tools)
+	output:batch(function()
+		M.collect(messages, output, tools)
+	end)
+
+	output:follow()
+end
+
+--- Replay the messages into the panel without drawing.
+---@param messages Crust.Pi.Message[]?
+---@param output Crust.Chat.Output
+---@param tools Crust.Chat.Tools
+function M.collect(messages, output, tools)
 	for _, message in ipairs(messages or {}) do
 		if message.role == "user" then
 			local text = M.text(message.content)
@@ -128,8 +143,6 @@ function M.render(messages, output, tools)
 			})
 		end
 	end
-
-	output:follow()
 end
 
 return M

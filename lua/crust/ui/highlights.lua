@@ -25,6 +25,7 @@ M.TOOL_ICON_ERROR = "CrustToolIconError"
 M.WINBAR = "CrustWinbar"
 M.WINBAR_TITLE = "CrustWinbarTitle"
 M.MENTION = "CrustMention"
+M.ELISION = "CrustElision"
 M.DIFF_ADD = "CrustDiffAdd"
 M.DIFF_DELETE = "CrustDiffDelete"
 
@@ -62,6 +63,8 @@ M.groups = {
 	-- @mentions are blue: Directory is the blue every colorscheme defines,
 	-- and `terminal_color_4` replaces it in `M.setup` when it is set.
 	[M.MENTION] = { link = "Directory" },
+	-- "⋯ 128 earlier messages ⋯": a hint, not transcript text.
+	[M.ELISION] = { link = "Comment" },
 	-- The `+3 -0` counters of edit/write. `Added`/`Removed` carry a foreground,
 	-- while most colorschemes give DiffAdd/DiffDelete a background only, which
 	-- would leave the counters in the surrounding text colour. `M.setup` falls

@@ -25,6 +25,7 @@ Because [PI](https://pi.dev) needs a Crust
 | `:Crust last` | Switch the chat to the most recent other session |
 | `:Crust send` | Put a mention for the current buffer in the prompt, `:'<,'>Crust send` for a range |
 | `:Crust rename [name]` | Rename the live session, prompts without a name |
+| `:Crust transcript` | Open the full conversation in a scratch buffer |
 | `:Crust stop` | Close the panel and stop the pi process |
 
 ## Sending context
@@ -144,6 +145,35 @@ require("crust.expansion").register({
 ```
 
 Turn the whole thing off with `expansion = { enabled = false }`.
+
+## Long sessions
+
+The panel does not keep the whole conversation in its buffer. The transcript
+lives in memory and only the messages around the one you are looking at are
+drawn, so a session with a thousand messages writes, highlights and renders
+as fast as a fresh one. What is left out is announced by a marker line:
+
+```
+⋯ 128 earlier messages ⋯
+```
+
+Scrolling into a marker pulls the neighbouring messages in, and the view
+sticks to the newest message again as soon as the cursor is back at the
+bottom. `:Crust transcript` opens the whole conversation in an ordinary
+buffer when you want to search or yank across all of it.
+
+```lua
+require("crust").setup({
+  output = {
+    viewport = {
+      enabled = true,     -- false keeps the whole session in the buffer
+      max_sections = 40,  -- messages drawn at once
+      max_lines = 4000,   -- soft cap, a message is never split
+      guard_lines = 20,   -- distance to a marker that pulls more in
+    },
+  },
+})
+```
 
 ```lua
 require("crust").setup({
