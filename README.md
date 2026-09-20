@@ -157,6 +157,10 @@ as fast as a fresh one. What is left out is announced by a marker line:
 ⋯ 128 earlier messages ⋯
 ```
 
+The first and the last few messages are always drawn, wherever you are in
+the session: the task it started from and what the agent just did stay one
+keystroke away, with a marker in between for what is skipped.
+
 Scrolling into a marker pulls the neighbouring messages in, and the view
 sticks to the newest message again as soon as the cursor is back at the
 bottom. `:Crust transcript` opens the whole conversation in an ordinary
@@ -170,6 +174,10 @@ require("crust").setup({
       max_sections = 40,  -- messages drawn at once
       max_lines = 4000,   -- soft cap, a message is never split
       guard_lines = 20,   -- distance to a marker that pulls more in
+      keep = {
+        first = 5,        -- oldest messages always drawn, 0 pins none
+        last = 5,         -- newest messages always drawn, 0 pins none
+      },
     },
   },
 })

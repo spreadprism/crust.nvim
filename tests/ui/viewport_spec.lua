@@ -10,8 +10,11 @@ describe("ui.chat.viewport", function()
 	---@type Crust.Chat.Output
 	local out
 
+	--- The pinned head and tail are off unless a spec asks for them, so the
+	--- selection specs see the window alone.
 	---@param viewport table
 	local function configure(viewport)
+		viewport = vim.tbl_deep_extend("keep", viewport, { keep = { first = 0, last = 0 } })
 		config.options = { output = { viewport = viewport } }
 		config.config = nil
 	end
@@ -188,6 +191,117 @@ describe("ui.chat.viewport", function()
 			out:view():set_anchor(1)
 			out:view():rebuild()
 			assert.is_truthy(table.concat(drawn(), "\n"):find("done", 1, true))
+		end)
+	end)
+
+	describe("pinned messages", function()
+		---@param first integer
+		---@param last integer
+		local function pin(first, last)
+			configure({
+				enabled = true,
+				max_sections = 3,
+				max_lines = 1000,
+				guard_lines = 2,
+				keep = { first = first, last = last },
+			})
+			out = Output.new()
+		end
+
+		---@param index integer
+		---@return boolean
+		local function shown(index)
+			return table.concat(drawn(), "\n"):find("message " .. index .. " line 1\n", 1, true) ~= nil
+		end
+
+		it("keeps the first messages whatever the cursor looks at", function()
+			pin(2, 0)
+			conversation(out, 10)
+
+			assert.is_true(shown(1))
+			assert.is_true(shown(2))
+			assert.is_false(shown(5))
+			assert.are.same({ { first = 1, last = 2 }, { first = 8, last = 10 } }, out:view():segments())
+		end)
+
+		it("keeps the last messages while reading the start of the session", function()
+			pin(0, 2)
+			conversation(out, 10)
+			out:view():set_anchor(2)
+			out:view():rebuild()
+
+			assert.is_true(shown(1))
+			assert.is_true(shown(9))
+			assert.is_true(shown(10))
+			assert.is_false(shown(5))
+		end)
+
+		it("announces the messages elided between the pinned ends", function()
+			pin(2, 2)
+			conversation(out, 10)
+			out:view():set_anchor(6)
+			out:view():rebuild()
+
+			local lines = drawn()
+			assert.is_truthy(vim.tbl_contains(lines, "⋯ 2 earlier messages ⋯"))
+			assert.is_truthy(vim.tbl_contains(lines, "⋯ 1 newer messages ⋯"))
+			-- Neither marker is at an edge of the buffer any more.
+			assert.are.equal("󰚩 " .. os.date(config.get().timestamp_format, 0), lines[1])
+		end)
+
+		it("merges the pinned ends into the window when they touch it", function()
+			pin(5, 5)
+			conversation(out, 6)
+
+			assert.are.same({ { first = 1, last = 6 } }, out:view():segments())
+			assert.are.same(out:lines(), drawn())
+		end)
+
+		it("pins no more than the transcript holds", function()
+			pin(5, 5)
+			conversation(out, 2)
+
+			assert.are.same({ { first = 1, last = 2 } }, out:view():segments())
+		end)
+
+		it("keeps writing into the pinned tail while the cursor is at the top", function()
+			pin(2, 2)
+			conversation(out, 10)
+			out:view():set_anchor(1)
+			out:view():rebuild()
+			out._following = false
+
+			out:append("pinned delta")
+			assert.is_truthy(table.concat(drawn(), "\n"):find("pinned delta", 1, true))
+		end)
+
+		it("moves the pinned tail along with the newest message", function()
+			pin(2, 2)
+			conversation(out, 10)
+			out:view():set_anchor(5)
+			out:view():rebuild()
+			out._following = false
+
+			-- The helper numbers from one again, the 11th message is "message 1".
+			conversation(out, 1)
+
+			local segments = out:view():segments()
+			assert.are.same({ first = 10, last = 11 }, segments[#segments])
+			assert.is_truthy(table.concat(drawn(), "\n"):find("message 1 line 1", 1, true))
+			assert.is_false(shown(9))
+		end)
+
+		it("pulls the elided messages in from an interior marker", function()
+			pin(2, 2)
+			conversation(out, 20)
+			out:open(60)
+
+			-- The marker under the pinned head, in the middle of the buffer.
+			local gap = out:view():gaps()[1]
+			vim.api.nvim_win_set_cursor(assert(out:win()), { gap.row + 1, 0 })
+			out:_on_scroll()
+
+			assert.are.equal(gap.after, out:view():anchor())
 		end)
 	end)
 

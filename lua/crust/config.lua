@@ -26,11 +26,16 @@ local M = {}
 ---@field above string format of the "older messages" hint, `%d` is the count
 ---@field below string format of the "newer messages" hint
 
+---@class Crust.Config.Output.Keep messages pinned whatever the cursor looks at
+---@field first integer oldest messages always drawn, 0 pins none
+---@field last integer newest messages always drawn, 0 pins none
+
 ---@class Crust.Config.Output.Viewport only the messages around the cursor are drawn
 ---@field enabled boolean false keeps the whole transcript in the buffer
 ---@field max_sections integer messages drawn at once, the one in view always is
 ---@field max_lines integer soft cap on the drawn lines, never splits a message
 ---@field guard_lines integer rows from an elision marker that pull more in
+---@field keep Crust.Config.Output.Keep head and tail pinned outside the budget
 ---@field markers Crust.Config.Output.Markers
 
 ---@class Crust.Config.Output
@@ -119,6 +124,13 @@ M.defaults = {
 			max_sections = 40,
 			max_lines = 4000,
 			guard_lines = 20,
+			-- The start of a conversation (the task) and its newest messages
+			-- are what one scrolls back for, so they are drawn whatever the
+			-- cursor sits on, on top of the budget above.
+			keep = {
+				first = 4,
+				last = 4,
+			},
 			markers = {
 				above = "⋯ %d earlier messages ⋯",
 				below = "⋯ %d newer messages ⋯",

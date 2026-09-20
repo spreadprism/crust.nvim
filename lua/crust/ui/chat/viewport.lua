@@ -3,9 +3,14 @@
 ---
 --- A long session must not cost anything to display, so only the sections
 --- around the anchor — the message the user is looking at, the newest one
---- while following — are written to the buffer. What is left out is announced
---- by one marker line on each side, and scrolling into a marker extends the
---- selection (`Crust.Chat.Output` drives that from its scroll autocmd).
+--- while following — are written to the buffer, plus the pinned head and tail
+--- of the conversation (`keep`): the task it started from and the messages it
+--- just produced are what one scrolls back for, so they are never elided.
+---
+--- The result is one to three runs of sections (`segments`), separated by a
+--- marker line that announces what was left out. Scrolling into a marker
+--- extends the selection (`Crust.Chat.Output` drives that from its scroll
+--- autocmd).
 ---
 --- Rows are 0-based buffer rows, lines are 1-based indices into a section.
 
@@ -14,7 +19,19 @@
 ---@field max_sections integer
 ---@field max_lines integer
 ---@field guard_lines integer
+---@field keep? { first: integer, last: integer } sections pinned at each end
 ---@field markers { above: string, below: string }
+
+---@class Crust.Chat.Viewport.Segment  a contiguous run of drawn sections
+---@field first integer
+---@field last integer
+
+---@class Crust.Chat.Viewport.Gap  an elision marker between two segments
+---@field row integer 0-based row of the marker line
+---@field count integer elided sections
+---@field before integer last section above the gap, 0 above the first one
+---@field after integer? first section below it, nil past the last one
+---@field key "above"|"below" marker format the gap is drawn with
 
 ---@class Crust.Chat.Viewport.Ref  a position, in transcript coordinates
 ---@field section integer
@@ -28,7 +45,8 @@
 ---@field private _last integer last materialized section
 ---@field private _rows table<integer, integer> section index -> 0-based row
 ---@field private _anchor integer? section to keep, nil follows the tail
----@field private _markers { above: boolean, below: boolean } markers on screen
+---@field private _segments Crust.Chat.Viewport.Segment[] drawn runs, in order
+---@field private _gaps Crust.Chat.Viewport.Gap[] markers on screen, in order
 local Viewport = {}
 Viewport.__index = Viewport
 
@@ -54,7 +72,8 @@ function Viewport.new(buf, transcript, opts)
 	self._last = 0
 	self._rows = {}
 	self._anchor = nil
-	self._markers = { above = false, below = false }
+	self._segments = {}
+	self._gaps = {}
 
 	return self
 end
@@ -67,6 +86,12 @@ end
 ---@return integer first, integer last materialized sections
 function Viewport:range()
 	return self._first, self._last
+end
+
+--- The elision markers on screen, in row order.
+---@return Crust.Chat.Viewport.Gap[]
+function Viewport:gaps()
+	return self._gaps
 end
 
 ---@param index integer
@@ -93,10 +118,64 @@ function Viewport:anchor()
 	return self._anchor
 end
 
---- Sections elided above and below the view.
+--- Sections elided above and below the drawn range. Sections elided *inside*
+--- it, between two segments, count as above when they sit before the anchor.
 ---@return integer above, integer below
 function Viewport:elided()
-	return self._first - 1, self._transcript:count() - self._last
+	local above, below = 0, 0
+	for _, gap in ipairs(self._gaps) do
+		if gap.key == "above" then
+			above = above + gap.count
+		else
+			below = below + gap.count
+		end
+	end
+	return above, below
+end
+
+--- The drawn runs of sections: the pinned head, the window around the anchor
+--- and the pinned tail, merged wherever they touch.
+---@return Crust.Chat.Viewport.Segment[]
+function Viewport:segments()
+	local count = self._transcript:count()
+	local opts = self:opts()
+	if not opts.enabled then
+		return { { first = 1, last = count } }
+	end
+
+	local keep = opts.keep or {}
+	local head = math.min(math.max(keep.first or 0, 0), count)
+	local tail = math.min(math.max(keep.last or 0, 0), count)
+
+	---@type Crust.Chat.Viewport.Segment[]
+	local wanted = {}
+	if head > 0 then
+		wanted[#wanted + 1] = { first = 1, last = head }
+	end
+	-- The pinned ends are mandatory, so the budget only bounds the window.
+	local first, last = self:select()
+	wanted[#wanted + 1] = { first = first, last = last }
+	if tail > 0 then
+		wanted[#wanted + 1] = { first = count - tail + 1, last = count }
+	end
+
+	table.sort(wanted, function(a, b)
+		return a.first < b.first
+	end)
+
+	---@type Crust.Chat.Viewport.Segment[]
+	local merged = {}
+	for _, segment in ipairs(wanted) do
+		local previous = merged[#merged]
+		-- Touching runs are joined: a marker for zero messages is noise.
+		if previous and segment.first <= previous.last + 1 then
+			previous.last = math.max(previous.last, segment.last)
+		else
+			merged[#merged + 1] = { first = segment.first, last = segment.last }
+		end
+	end
+
+	return merged
 end
 
 --- Sections that fit the budget around the anchor, never splitting one.
@@ -165,39 +244,104 @@ function Viewport:_marker(count, key)
 	return ok and text or format
 end
 
+--- Segment holding the anchor, so a gap can tell whether what it hides is
+--- older or newer than what the user is looking at.
+---@private
+---@param segments Crust.Chat.Viewport.Segment[]
+---@return integer
+function Viewport:_pivot(segments)
+	local anchor = self._anchor or self._transcript:count()
+	for index, segment in ipairs(segments) do
+		if anchor >= segment.first and anchor <= segment.last then
+			return index
+		end
+	end
+	return #segments
+end
+
+--- True when `segments` is what is already on screen.
+---@private
+---@param segments Crust.Chat.Viewport.Segment[]
+---@return boolean
+function Viewport:_drawn(segments)
+	if #segments ~= #self._segments then
+		return false
+	end
+	for index, segment in ipairs(segments) do
+		local drawn = self._segments[index]
+		if drawn.first ~= segment.first or drawn.last ~= segment.last then
+			return false
+		end
+	end
+	return true
+end
+
 --- Rewrite the whole window: pick the sections, draw them, highlight them.
 function Viewport:rebuild()
 	if not vim.api.nvim_buf_is_valid(self._buf) then
 		return
 	end
 
-	local first, last = self:select()
-	local lines, rows = self._transcript:render(first, last)
 	local total = self._transcript:count()
+	local segments = self:segments()
+	local pivot = self:_pivot(segments)
 
-	local offset = 0
-	if first > 1 then
-		table.insert(lines, 1, self:_marker(first - 1, "above"))
-		offset = 1
+	local lines = {}
+	local rows = {}
+	---@type Crust.Chat.Viewport.Gap[]
+	local gaps = {}
+
+	---@param before integer
+	---@param after integer?
+	---@param at integer segment the gap sits in front of
+	local function gap(before, after, at)
+		local key = at <= pivot and "above" or "below"
+		local count = (after or total + 1) - before - 1
+		gaps[#gaps + 1] = { row = #lines, count = count, before = before, after = after, key = key }
+		lines[#lines + 1] = self:_marker(count, key)
 	end
-	if last < total then
+
+	for index, segment in ipairs(segments) do
+		local previous = segments[index - 1]
+		if previous then
+			lines[#lines + 1] = ""
+			gap(previous.last, segment.first, index)
+		elseif segment.first > 1 then
+			gap(0, segment.first, index)
+		end
+
+		local offset = #lines
+		local drawn, at = self._transcript:render(segment.first, segment.last)
+		vim.list_extend(lines, drawn)
+		for section, row in pairs(at) do
+			rows[section] = row + offset
+		end
+	end
+
+	local tail = segments[#segments]
+	if tail and tail.last < total then
 		lines[#lines + 1] = ""
-		lines[#lines + 1] = self:_marker(total - last, "below")
+		gap(tail.last, nil, #segments + 1)
 	end
 
-	self._rows = {}
-	for index, row in pairs(rows) do
-		self._rows[index] = row + offset
+	if #lines == 0 then
+		lines[1] = ""
 	end
-	self._first, self._last = first, last
-	self._markers = { above = first > 1, below = last < total }
+
+	self._rows = rows
+	self._segments = segments
+	self._gaps = gaps
+	self._first = segments[1] and segments[1].first or 1
+	self._last = tail and tail.last or 0
 
 	self:_set(0, -1, lines)
 
 	vim.api.nvim_buf_clear_namespace(self._buf, Viewport.ns, 0, -1)
 	vim.api.nvim_buf_clear_namespace(self._buf, Mentions.ns, 0, -1)
-	for index = first, last do
-		self:apply(index)
+	for _, segment in ipairs(segments) do
+		for index = segment.first, segment.last do
+			self:apply(index)
+		end
 	end
 	self:_apply_markers()
 end
@@ -210,14 +354,22 @@ end
 ---@return boolean appended false when the view has to be rebuilt instead
 function Viewport:extend_tail()
 	local total = self._transcript:count()
-	if self._last ~= total - 1 or self._markers.below then
+	local tail = self._segments[#self._segments]
+	-- A tail that stops short of the section before the new one has a marker
+	-- under it: the message does not belong there.
+	if not tail or tail.last ~= total - 1 then
 		return false
 	end
 
-	-- Anything else — an eviction at the top, a budget that no longer fits —
-	-- is a redraw.
-	local first, last = self:select()
-	if first ~= self._first or last ~= total then
+	-- Anything else — an eviction at the top, a pinned head that moved, a
+	-- budget that no longer fits — is a redraw.
+	local segments = self:segments()
+	local grown = segments[#segments]
+	if not grown or grown.last ~= total or grown.first ~= tail.first then
+		return false
+	end
+	segments[#segments] = { first = tail.first, last = tail.last }
+	if not self:_drawn(segments) then
 		return false
 	end
 
@@ -239,49 +391,40 @@ function Viewport:extend_tail()
 
 	self._rows[total] = at + rows[total]
 	self._last = total
+	tail.last = total
 	self:apply(total)
 
 	return true
 end
 
 --- Redraw the marker lines alone, e.g. after a message arrived off screen.
---- A marker that was not there yet needs the full redraw.
+--- A marker that was not there yet, or a pinned end that moved, needs the
+--- full redraw.
 function Viewport:refresh_markers()
-	local above, below = self:elided()
-	local drawn = self._markers or { above = false, below = false }
-
-	if drawn.above ~= (above > 0) or drawn.below ~= (below > 0) then
+	local segments = self:segments()
+	if not self:_drawn(segments) then
 		return self:rebuild()
 	end
 
-	if above > 0 then
-		self:_set(0, 1, { self:_marker(above, "above") })
-		self:clear_rows(0, 1)
-	end
-	if below > 0 then
-		local count = vim.api.nvim_buf_line_count(self._buf)
-		self:_set(count - 1, count, { self:_marker(below, "below") })
-		self:clear_rows(count - 1, count)
+	local total = self._transcript:count()
+	for _, gap in ipairs(self._gaps) do
+		local count = (gap.after or total + 1) - gap.before - 1
+		if count ~= gap.count then
+			gap.count = count
+			self:_set(gap.row, gap.row + 1, { self:_marker(count, gap.key) })
+			self:clear_rows(gap.row, gap.row + 1)
+		end
 	end
 	self:_apply_markers()
 end
 
 ---@private
 function Viewport:_apply_markers()
-	local above, below = self:elided()
-	local count = vim.api.nvim_buf_line_count(self._buf)
-
-	if above > 0 then
-		vim.api.nvim_buf_set_extmark(self._buf, Viewport.ns, 0, 0, { end_row = 1, hl_group = Highlights.ELISION })
-	end
-	if below > 0 then
-		vim.api.nvim_buf_set_extmark(
-			self._buf,
-			Viewport.ns,
-			count - 1,
-			0,
-			{ end_row = count, hl_group = Highlights.ELISION }
-		)
+	for _, gap in ipairs(self._gaps) do
+		vim.api.nvim_buf_set_extmark(self._buf, Viewport.ns, gap.row, 0, {
+			end_row = gap.row + 1,
+			hl_group = Highlights.ELISION,
+		})
 	end
 end
 
@@ -303,14 +446,53 @@ function Viewport:patch(patch)
 
 	local delta = #patch.lines - patch.removed
 	if delta ~= 0 then
-		for index = patch.section + 1, self._last do
-			if self._rows[index] then
-				self._rows[index] = self._rows[index] + delta
+		for index, at in pairs(self._rows) do
+			if index > patch.section then
+				self._rows[index] = at + delta
+			end
+		end
+		for _, gap in ipairs(self._gaps) do
+			-- A gap sits under the last section above it.
+			if gap.before >= patch.section then
+				gap.row = gap.row + delta
 			end
 		end
 	end
 
 	return true
+end
+
+--- Section to re-anchor on when the window comes within `guard` rows of an
+--- elision marker, nil while every marker is out of reach.
+---@param top integer 1-based first visible line
+---@param bottom integer 1-based last visible line
+---@param guard integer
+---@return integer?
+function Viewport:reach(top, bottom, guard)
+	for _, gap in ipairs(self._gaps) do
+		local line = gap.row + 1
+		-- Anchoring below a gap pulls earlier messages in, anchoring above it
+		-- pulls later ones.
+		local earlier = gap.after
+		local later = gap.before > 0 and gap.before or nil
+
+		if line < top then
+			if top - line <= guard then
+				return earlier or later
+			end
+		elseif line > bottom then
+			if line - bottom <= guard then
+				return later or earlier
+			end
+		-- The marker itself is on screen: grow towards the closer edge.
+		elseif line - top <= bottom - line then
+			return earlier or later
+		else
+			return later or earlier
+		end
+	end
+
+	return nil
 end
 
 --- Clear the highlights of a row range, e.g. before a block is rewritten.
@@ -406,7 +588,7 @@ end
 ---@return Crust.Regions.Range[]
 function Viewport:block_ranges()
 	local ranges = {}
-	for index = self._first, self._last do
+	for index in pairs(self._rows) do
 		local section = self._transcript:section(index)
 		local row = self._rows[index]
 		if section and row then

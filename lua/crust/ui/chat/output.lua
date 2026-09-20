@@ -426,7 +426,7 @@ function Output:_on_scroll()
 
 	local opts = view_opts()
 	local count = vim.api.nvim_buf_line_count(self._buf)
-	local first, last = self._view:range()
+	local _, last = self._view:range()
 	local total = self._transcript:count()
 
 	local edges = vim.api.nvim_win_call(win, function()
@@ -437,10 +437,11 @@ function Output:_on_scroll()
 
 	self._following = last >= total and cursor >= count - 1
 
-	if first > 1 and top <= opts.guard_lines + 1 then
-		self:_extend(first)
-	elseif last < total and bottom >= count - opts.guard_lines then
-		self:_extend(last)
+	-- Any marker the window is about to reach pulls its neighbours in, the
+	-- pinned head and tail put one in the middle of the buffer as well.
+	local target = self._view:reach(top, bottom, opts.guard_lines)
+	if target then
+		self:_extend(target)
 	end
 end
 
