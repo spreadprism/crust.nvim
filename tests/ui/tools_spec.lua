@@ -572,6 +572,19 @@ describe("ui.chat.tools", function()
 
 				assert.are.equal("+1", text_of("CrustDiffAdd"))
 				assert.are.equal("-2", text_of("CrustDiffDelete"))
+
+				-- The flat body group covers the same cells, so the counters have
+				-- to be drawn above it.
+				local body, add
+				for _, hl in ipairs(render.highlights) do
+					if hl.group == "CrustToolBodyInline" then
+						body = hl
+					elseif hl.group == "CrustDiffAdd" then
+						add = hl
+					end
+				end
+				assert.is_truthy(add.priority)
+				assert.is_true(add.priority > (body.priority or 4096))
 			end)
 
 			it("leaves the fallback body uncoloured", function()

@@ -38,11 +38,11 @@ describe("sessions.picker", function()
 	end)
 
 	describe("select", function()
-		it("answers with nil and notifies when there is nothing to pick", function()
-			local called, level = false, nil
+		it("answers with nil and stays quiet when there is nothing to pick", function()
+			local called, notified = false, false
 			local notify = vim.notify
-			vim.notify = function(_, lvl)
-				level = lvl
+			vim.notify = function()
+				notified = true
 			end
 
 			Picker.select({ cwd = cwd }, function(session)
@@ -52,7 +52,7 @@ describe("sessions.picker", function()
 
 			vim.notify = notify
 			assert.is_true(called)
-			assert.are.equal(vim.log.levels.INFO, level)
+			assert.is_false(notified)
 		end)
 
 		it("falls back to vim.ui.select without snacks", function()
@@ -98,12 +98,14 @@ describe("sessions.picker", function()
 				return 1
 			end
 
-			local done = false
-			Picker.delete(entries(), function()
-				done = true
+			local done, removed = false, nil
+			Picker.delete(entries(), function(deleted)
+				done, removed = true, deleted
 			end)
 
 			assert.is_true(done)
+			table.sort(removed)
+			assert.are.same({ first, second }, removed)
 			assert.are.equal(0, vim.fn.filereadable(first))
 			assert.are.equal(0, vim.fn.filereadable(second))
 			assert.are.same({}, Sessions.list(cwd))

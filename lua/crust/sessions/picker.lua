@@ -15,6 +15,7 @@ M.DELETE_KEY = "<C-d>"
 ---@class Crust.Sessions.Picker.Opts
 ---@field cwd? string sessions of this directory, defaults to the current one
 ---@field title? string picker title
+---@field on_delete? fun(paths: string[]) called with the session files removed
 
 ---@param session Crust.Session
 ---@return snacks.picker.finder.Item
@@ -57,10 +58,13 @@ local function snacks_pick(sessions, opts, on_choice)
 		actions = {
 			---@param picker snacks.Picker
 			crust_delete_session = function(picker)
-				M.delete(picker:selected({ fallback = true }), function()
+				M.delete(picker:selected({ fallback = true }), function(deleted)
 					-- The finder is a static list, so it is rebuilt from disk.
 					picker.opts.items = vim.tbl_map(item, Sessions.list(opts.cwd))
 					picker:find()
+					if opts.on_delete and #deleted > 0 then
+						opts.on_delete(deleted)
+					end
 				end)
 			end,
 		},
@@ -79,7 +83,7 @@ end
 
 --- Delete the sessions behind the given picker items, after confirmation.
 ---@param entries { session: Crust.Session }[]
----@param on_done? fun()
+---@param on_done? fun(deleted: string[]) paths that were removed
 function M.delete(entries, on_done)
 	if #entries == 0 then
 		return
@@ -91,15 +95,19 @@ function M.delete(entries, on_done)
 		return
 	end
 
+	---@type string[]
+	local deleted = {}
 	for _, entry in ipairs(entries) do
 		local ok, err = Sessions.delete(entry.session.path)
-		if not ok then
+		if ok then
+			deleted[#deleted + 1] = entry.session.path
+		else
 			vim.notify("crust: " .. tostring(err), vim.log.levels.ERROR)
 		end
 	end
 
 	if on_done then
-		on_done()
+		on_done(deleted)
 	end
 end
 

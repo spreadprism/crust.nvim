@@ -62,9 +62,12 @@ M.groups = {
 	-- @mentions are blue: Directory is the blue every colorscheme defines,
 	-- and `terminal_color_4` replaces it in `M.setup` when it is set.
 	[M.MENTION] = { link = "Directory" },
-	-- The `+3 -0` counters of edit/write.
-	[M.DIFF_ADD] = { link = "DiffAdd" },
-	[M.DIFF_DELETE] = { link = "DiffDelete" },
+	-- The `+3 -0` counters of edit/write. `Added`/`Removed` carry a foreground,
+	-- while most colorschemes give DiffAdd/DiffDelete a background only, which
+	-- would leave the counters in the surrounding text colour. `M.setup` falls
+	-- back to the Diff groups when the colorscheme has no Added/Removed.
+	[M.DIFF_ADD] = { link = "Added" },
+	[M.DIFF_DELETE] = { link = "Removed" },
 }
 
 -- Ansi colours follow the terminal palette, so they match the colorscheme.
@@ -96,7 +99,14 @@ function M.setup(force)
 		vim.api.nvim_set_hl(0, "RenderMarkdownCode", { link = "CursorLine", default = true })
 	end
 
+	--- Diff colours differ per colorscheme, see the groups above.
+	local function diff_links()
+		M.groups[M.DIFF_ADD] = { link = vim.fn.hlexists("Added") == 1 and "Added" or "DiffAdd" }
+		M.groups[M.DIFF_DELETE] = { link = vim.fn.hlexists("Removed") == 1 and "Removed" or "DiffDelete" }
+	end
+
 	local function define()
+		diff_links()
 		for name, def in pairs(M.groups) do
 			vim.api.nvim_set_hl(0, name, vim.tbl_extend("keep", def, { default = true }))
 		end

@@ -513,11 +513,37 @@ end
 
 --- Pick a past session and load it. The picker can also delete sessions.
 function Chat:sessions()
-	require("crust.sessions.picker").select({}, function(session)
+	require("crust.sessions.picker").select({
+		---@param paths string[]
+		on_delete = function(paths)
+			self:_on_sessions_deleted(paths)
+		end,
+	}, function(session)
 		if session then
 			self:load_session(session.path)
 		end
 	end)
+end
+
+--- Leave the live session when it is one of the deleted files: pi would keep
+--- writing to a `.jsonl` that no longer exists, so a fresh one is started.
+---@private
+---@param paths string[]
+function Chat:_on_sessions_deleted(paths)
+	local current = self._session.file
+	if not current then
+		return
+	end
+
+	current = vim.fs.normalize(current)
+	for _, path in ipairs(paths) do
+		if vim.fs.normalize(path) == current then
+			-- The file is gone, so it cannot be the parent of the new session.
+			self._session.file = nil
+			self:new_session()
+			return
+		end
+	end
 end
 
 --- Rename the current session. Prompts when `name` is omitted.

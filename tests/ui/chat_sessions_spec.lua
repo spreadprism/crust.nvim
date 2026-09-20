@@ -281,6 +281,23 @@ describe("ui.chat sessions", function()
 			assert.is_nil(chat:status():text())
 		end)
 
+		it("starts a fresh one when the live session is deleted from the picker", function()
+			chat:_on_event({
+				type = "response",
+				command = "get_state",
+				success = true,
+				data = { sessionId = "abc", sessionFile = "/tmp/abc.jsonl" },
+			})
+
+			chat:_on_sessions_deleted({ "/tmp/other.jsonl" })
+			assert.are.same({}, sent)
+
+			chat:_on_sessions_deleted({ "/tmp/other.jsonl", "/tmp/abc.jsonl" })
+			assert.are.equal("new_session", sent[1].type)
+			-- The parent file is gone, so it is not recorded.
+			assert.is_nil(sent[1].parentSession)
+		end)
+
 		it("keeps the transcript when pi refuses", function()
 			chat:output():append("old talk\n")
 

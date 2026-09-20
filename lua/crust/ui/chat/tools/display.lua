@@ -38,6 +38,11 @@ Display.__index = Display
 --- Every tool call is rendered as a quoted block.
 Display.BLOCK_PREFIX = "> "
 
+--- Spec colours (the `+3 -0` counters, ansi output) sit above the flat title
+--- and body groups, which cover the same cells: nvim's default extmark
+--- priority is 4096, and equal priorities leave the winner to mark order.
+local COLORED_PRIORITY = 4200
+
 local Config = require("crust.config")
 local Highlights = require("crust.ui.highlights")
 local Syntax = require("crust.ui.syntax")
@@ -47,6 +52,7 @@ local Syntax = require("crust.ui.syntax")
 ---@field col integer byte offset, 0-based
 ---@field end_col integer byte offset, exclusive
 ---@field group string highlight group
+---@field priority? integer extmark priority, defaults to nvim's 4096
 ---@field overlay? string text drawn over the range, e.g. the quote marker
 
 ---@class Crust.Chat.Tools.Render
@@ -303,6 +309,8 @@ function Display:render(width)
 							col = col + range.col,
 							end_col = col + range.end_col,
 							group = range.group,
+							-- Drawn over the flat body group underneath it.
+							priority = COLORED_PRIORITY,
 						}
 					end
 				end
@@ -347,6 +355,8 @@ function Display:render(width)
 				col = #body_prefix + range.col,
 				end_col = #body_prefix + range.end_col,
 				group = range.group,
+				-- Drawn over the flat body group underneath it.
+				priority = COLORED_PRIORITY,
 			}
 		end
 	elseif syntax then
