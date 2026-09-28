@@ -5,6 +5,10 @@ local Chat = require("crust.ui.chat")
 ---@type Crust.Chat?
 local chat = nil
 
+--- Cwd the current chat and session cache belong to.
+---@type string?
+local dir = nil
+
 ---@return Crust.Chat
 function M.chat()
 	if not chat then
@@ -179,7 +183,51 @@ function M.stop()
 		chat:stop()
 		chat = nil
 	end
+	dir = nil
 	require("crust.sessions.cache").stop()
+end
+
+--- A pi process is bound to the cwd it was started in, and so is the session
+--- history the chat lists. Rather than move a live chat to another project,
+--- the old one is dropped whole and the next open starts a fresh process in
+--- the new directory.
+---@param cwd string directory nvim moved to
+---@private
+function M.dir_changed(cwd)
+	if cwd == dir then
+		return
+	end
+
+	-- Watchers of the directory we left: nothing in it is on screen anymore.
+	-- `stop()` without an argument would clear every entry, so only an
+	-- already known cwd is dropped.
+	if dir then
+		require("crust.sessions.cache").stop(dir)
+	end
+	dir = cwd
+
+	if chat then
+		chat:close()
+		chat:stop()
+		chat = nil
+	end
+
+	if require("crust.config").get().preload.sessions ~= false then
+		require("crust.sessions.cache").warm(cwd)
+	end
+end
+
+---@private
+function M.watch_dir()
+	dir = vim.fn.getcwd()
+	vim.api.nvim_create_autocmd("DirChanged", {
+		group = vim.api.nvim_create_augroup("crust.dir", { clear = true }),
+		callback = function()
+			-- Window- and tabpage-local `:lcd` fire this too, and only some of
+			-- them move the global cwd the chat follows.
+			M.dir_changed(vim.fn.getcwd())
+		end,
+	})
 end
 
 ---@param opts? Crust.Config
@@ -201,6 +249,8 @@ function M.setup(opts)
 
 	-- Starts the neovim socket now so it exists before the first chat.
 	require("crust.extension").setup()
+
+	M.watch_dir()
 
 	M.preload()
 end
