@@ -26,6 +26,7 @@ M.WINBAR = "CrustWinbar"
 M.WINBAR_TITLE = "CrustWinbarTitle"
 M.MENTION = "CrustMention"
 M.THINKING = "CrustThinking"
+M.GHOST_TEXT = "CrustGhostText"
 M.INPUT_BAR = "CrustInputBar"
 M.INPUT_BAR_WARNING = "CrustInputBarWarning"
 M.INPUT_BAR_ERROR = "CrustInputBarError"
@@ -68,6 +69,8 @@ M.groups = {
 	[M.MENTION] = { link = "Directory" },
 	-- Reasoning text is an aside, not the answer: it reads like a comment.
 	[M.THINKING] = { link = "Comment" },
+	-- Suggested, not typed: the same grey every ghost text uses.
+	[M.GHOST_TEXT] = { link = "Comment" },
 	-- The prompt bar (cost, model) is blue like the mentions above it, and
 	-- picks up `terminal_color_4` in `M.setup` the same way.
 	[M.INPUT_BAR] = { link = "Directory" },

@@ -39,6 +39,14 @@ local M = {}
 ---@field model string model of that process, small and fast by default
 ---@field context_lines integer lines kept on each side of the cursor in normal mode
 
+---@class Crust.Config.QuickComplete ghost-text line completion, see `crust.quickcomplete`
+---@field enabled boolean start the third pi process after `setup`
+---@field model string model of that process, the smallest one that can code
+---@field auto boolean keep generating in the background while you type
+---@field debounce_ms integer quiet period before a generation is fired
+---@field window_lines integer lines of context kept on each side of the cursor
+---@field cache_size integer completions remembered, keyed by their context
+
 ---@class Crust.Config.Thinking
 ---@field enabled boolean show the model's reasoning in the scrollback, highlighted as a comment
 
@@ -92,6 +100,7 @@ local M = {}
 ---@field input_bar Crust.Config.InputBar cost and model under the prompt
 ---@field thinking Crust.Config.Thinking the model's reasoning text
 ---@field quickprompt Crust.Config.QuickPrompt inline edits, outside the chat
+---@field quickcomplete Crust.Config.QuickComplete ghost-text completion of the current line
 ---@field raw_tool_blocks boolean keep tool blocks out of the markdown tree
 M.defaults = {
 	bin = "pi",
@@ -119,6 +128,18 @@ M.defaults = {
 		enabled = true,
 		model = "anthropic/claude-haiku-4-5",
 		context_lines = 5,
+	},
+	-- Completion is answered while you type, so everything here is a latency
+	-- or a cost knob: the smallest model, a short window, one call per pause.
+	-- Off by default: unlike the chat and quickprompt, which only cost
+	-- something when asked, this one bills a model for typing.
+	quickcomplete = {
+		enabled = false,
+		model = "anthropic/claude-haiku-4-5",
+		auto = true,
+		debounce_ms = 250,
+		window_lines = 40,
+		cache_size = 64,
 	},
 	status_text = "",
 	keymaps = {

@@ -175,6 +175,26 @@ function M.quickprompt(opts, callback)
 	return require("crust.quickprompt").ask(opts, callback)
 end
 
+--- Draw the completion for the line the cursor is on, as ghost text.
+---
+--- The quickcomplete process generates in the background while you type, so
+--- this usually draws an answer that is already there.
+---@return boolean shown
+function M.show_completion()
+	return require("crust.quickcomplete").show_completion()
+end
+
+--- Insert the completion on screen, if there is one.
+---@return boolean accepted false when no ghost text was visible
+function M.accept_completion()
+	return require("crust.quickcomplete").accept_completion()
+end
+
+--- Drop the completion on screen.
+function M.hide_completion()
+	require("crust.quickcomplete").hide_completion()
+end
+
 --- Copy the conversation into a scratch buffer, for searching or yanking
 --- outside the read-only panel.
 ---@return integer buf
@@ -216,6 +236,7 @@ function M.stop()
 		chat = nil
 	end
 	require("crust.quickprompt").stop()
+	require("crust.quickcomplete").stop()
 	dir = nil
 	require("crust.sessions.cache").stop()
 end
@@ -245,9 +266,10 @@ function M.dir_changed(cwd)
 		chat = nil
 	end
 
-	-- The quickprompt process is bound to its cwd the same way, and it comes
-	-- back up by itself on the next instruction.
+	-- The quickprompt and quickcomplete processes are bound to their cwd the
+	-- same way, and both come back up by themselves on the next request.
 	require("crust.quickprompt").stop()
+	require("crust.quickcomplete").stop()
 
 	if require("crust.config").get().preload.sessions ~= false then
 		require("crust.sessions.cache").warm(cwd)
@@ -292,6 +314,7 @@ function M.setup(opts)
 	-- Its own process, started next tick so the first instruction does not
 	-- wait for pi to come up.
 	require("crust.quickprompt").setup()
+	require("crust.quickcomplete").setup()
 
 	M.preload()
 end
