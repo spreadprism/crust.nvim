@@ -35,6 +35,12 @@ local COLORED_PRIORITY = 4200
 --- The window currently open, at most one: a second preview replaces it.
 ---@type integer?
 local current = nil
+--- Buffer of that window, kept so live updates can repaint it.
+---@type integer?
+local current_buf = nil
+--- Call the open window is showing, so updates for other calls are ignored.
+---@type Crust.Chat.Tools.Display?
+local current_display = nil
 
 --- Full title of the call: the spec's `preview_title` when it has one, else
 --- the title the scrollback shows, uncut.
@@ -145,7 +151,7 @@ end
 ---@return boolean closed
 function M.close()
 	local win = current
-	current = nil
+	current, current_buf, current_display = nil, nil, nil
 	if win and vim.api.nvim_win_is_valid(win) then
 		pcall(vim.api.nvim_win_close, win, true)
 		return true
@@ -174,8 +180,79 @@ local function wrapped_height(lines, width)
 	return rows
 end
 
+---@param lines string[]
+---@return integer width
+---@return integer height
+local function dimensions(lines)
+	local widest = MIN_WIDTH
+	for _, line in ipairs(lines) do
+		widest = math.max(widest, vim.fn.strdisplaywidth(line))
+	end
+	local width = math.min(widest, math.floor(vim.o.columns * WIDTH_RATIO))
+	local height = math.min(wrapped_height(lines, width), math.floor(vim.o.lines * HEIGHT_RATIO))
+	return width, math.max(height, 1)
+end
+
+--- Replace the float's text and highlights with `content`.
+---@param buf integer
+---@param content Crust.Chat.Tools.Preview.Content
+local function paint(buf, content)
+	vim.bo[buf].modifiable = true
+	vim.api.nvim_buf_set_lines(buf, 0, -1, false, content.lines)
+	vim.bo[buf].modifiable = false
+
+	vim.api.nvim_buf_clear_namespace(buf, M.ns, 0, -1)
+	for _, hl in ipairs(content.highlights) do
+		pcall(vim.api.nvim_buf_set_extmark, buf, M.ns, hl.line - 1, hl.col, {
+			end_col = hl.end_col,
+			hl_group = hl.group,
+			priority = hl.priority,
+		})
+	end
+end
+
+--- Repaint the open preview when it is showing `display`, so a running
+--- command streams into the float instead of freezing at the state it had
+--- when the float was opened. The view follows the output while the cursor
+--- sits on the last line, and stays put once the user scrolls up.
+---@param display Crust.Chat.Tools.Display
+---@return boolean refreshed
+function M.refresh(display)
+	local win, buf = M.win(), current_buf
+	if not win or not buf or current_display ~= display or not vim.api.nvim_buf_is_valid(buf) then
+		return false
+	end
+
+	local cursor = vim.api.nvim_win_get_cursor(win)
+	local follow = cursor[1] >= vim.api.nvim_buf_line_count(buf)
+
+	local content = M.content(display)
+	paint(buf, content)
+
+	local width, height = dimensions(content.lines)
+	pcall(vim.api.nvim_win_set_config, win, {
+		relative = "editor",
+		width = width,
+		height = height,
+		row = math.max(math.floor((vim.o.lines - height) / 2) - 1, 0),
+		col = math.floor((vim.o.columns - width) / 2),
+	})
+
+	local last = vim.api.nvim_buf_line_count(buf)
+	local row = follow and last or math.min(cursor[1], last)
+	pcall(vim.api.nvim_win_set_cursor, win, { row, 0 })
+	if follow then
+		pcall(vim.api.nvim_win_call, win, function()
+			vim.cmd("normal! zb")
+		end)
+	end
+
+	return true
+end
+
 --- Show a tool call in a centered float, focused so it can be scrolled,
 --- searched and yanked from. Any key that closes it leaves the chat as it was.
+--- A call that is still running keeps streaming into the float, see `refresh`.
 ---@param display Crust.Chat.Tools.Display
 ---@return integer? win
 function M.open(display)
@@ -183,21 +260,13 @@ function M.open(display)
 	M.close()
 
 	local content = M.content(display)
-
-	local widest = MIN_WIDTH
-	for _, line in ipairs(content.lines) do
-		widest = math.max(widest, vim.fn.strdisplaywidth(line))
-	end
-	local width = math.min(widest, math.floor(vim.o.columns * WIDTH_RATIO))
-	local height = math.min(wrapped_height(content.lines, width), math.floor(vim.o.lines * HEIGHT_RATIO))
-	height = math.max(height, 1)
+	local width, height = dimensions(content.lines)
 
 	local buf = vim.api.nvim_create_buf(false, true)
 	vim.bo[buf].buftype = "nofile"
 	vim.bo[buf].swapfile = false
 	vim.bo[buf].bufhidden = "wipe"
-	vim.api.nvim_buf_set_lines(buf, 0, -1, false, content.lines)
-	vim.bo[buf].modifiable = false
+	paint(buf, content)
 
 	local ok, win = pcall(vim.api.nvim_open_win, buf, true, {
 		relative = "editor",
@@ -215,17 +284,14 @@ function M.open(display)
 		return nil
 	end
 
-	current = win
+	current, current_buf, current_display = win, buf, display
 	vim.wo[win].wrap = true
 	vim.wo[win].linebreak = false
 	vim.wo[win].winfixbuf = true
 
-	for _, hl in ipairs(content.highlights) do
-		pcall(vim.api.nvim_buf_set_extmark, buf, M.ns, hl.line - 1, hl.col, {
-			end_col = hl.end_col,
-			hl_group = hl.group,
-			priority = hl.priority,
-		})
+	-- A call opened while it runs starts at the newest output.
+	if display.status == "pending" then
+		pcall(vim.api.nvim_win_set_cursor, win, { vim.api.nvim_buf_line_count(buf), 0 })
 	end
 
 	for _, lhs in ipairs({ "q", "<Esc>" }) do

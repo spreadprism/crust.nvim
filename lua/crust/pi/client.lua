@@ -108,8 +108,8 @@ function Pi:connect()
 		on_stderr = function(_, data)
 			self:_on_stderr(data)
 		end,
-		on_exit = function(_, code)
-			self:_on_exit(code)
+		on_exit = function(job, code)
+			self:_on_exit(code, job)
 		end,
 	})
 
@@ -326,7 +326,14 @@ end
 
 ---@private
 ---@param code integer
-function Pi:_on_exit(code)
+---@param job? integer the job that exited, as reported by nvim
+function Pi:_on_exit(code, job)
+	-- A process that was already replaced, e.g. after a forced restart: its
+	-- death says nothing about the one running now.
+	if job and self.job_id and job ~= self.job_id then
+		return
+	end
+
 	self.job_id = nil
 	self._stdout_buf = ""
 	self._pending = {}

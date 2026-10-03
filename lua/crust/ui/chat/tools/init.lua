@@ -13,6 +13,8 @@ local Tools = {}
 Tools.__index = Tools
 
 local Display = require("crust.ui.chat.tools.display")
+local Excerpt = require("crust.ui.chat.tools.excerpt")
+local Preview = require("crust.ui.chat.tools.preview")
 
 ---@type table<string, true>
 local HANDLED = {
@@ -24,7 +26,10 @@ local HANDLED = {
 --- Arguments most worth showing when a tool has no dedicated spec.
 local SUMMARY_KEYS = { "command", "path", "file_path", "pattern", "query", "url" }
 
---- Fallback display: the tool's most telling argument.
+--- Fallback display: the tool's most telling argument, and what it answered.
+--- A tool without a spec of its own still shows its result, cut to the first
+--- `Excerpt.MAX_LINES` lines: the top of an answer is the part that says what
+--- the call did.
 ---@type Crust.Chat.Tools.Spec
 Tools.DEFAULT = {
 	title = function(display)
@@ -37,10 +42,23 @@ Tools.DEFAULT = {
 		return ""
 	end,
 	body = function(display)
+		-- A failure is short and worth reading whole.
 		if display.status == "error" then
 			return display:result_text()
 		end
-		return nil
+
+		local text = display:result_text()
+		if not text or vim.trim(text) == "" then
+			return nil
+		end
+		return (Excerpt.of(display, { from = "head" }))
+	end,
+	body_highlights = function(display)
+		if display.status == "error" then
+			return nil
+		end
+		local _, ranges = Excerpt.of(display, { from = "head" })
+		return ranges
 	end,
 }
 
@@ -112,6 +130,9 @@ function Tools:render(output, event)
 	end
 	display:update(event)
 
+	-- A float open on this call follows it live, output and status alike.
+	Preview.refresh(display)
+
 	-- The title is cut to the window so a long command never wraps.
 	local render = display:render(output:width())
 	local block = self._blocks[id]
@@ -134,6 +155,30 @@ function Tools:render(output, event)
 	self._blocks[id] = block
 	self._by_block[block.id] = display
 	self._last = { block = block, inline = display:is_inline() }
+end
+
+--- Resolve every call still marked pending, e.g. when the turn ends without
+--- pi reporting the end of a tool it never got to finish. Without this a
+--- killed or timed out call keeps spinning in the scrollback forever.
+---@param output Crust.Chat.Output
+---@param status Crust.Chat.Tools.Status what the unfinished calls become
+---@return integer settled number of calls that were still pending
+function Tools:settle(output, status)
+	local settled = 0
+	for id, display in pairs(self._displays) do
+		if display.status == "pending" then
+			display:set_status(status)
+			settled = settled + 1
+
+			local block = self._blocks[id]
+			if block then
+				local render = display:render(output:width())
+				output:replace_block(block, render.lines, render.highlights, render.line_highlights)
+			end
+			Preview.refresh(display)
+		end
+	end
+	return settled
 end
 
 function Tools:reset()

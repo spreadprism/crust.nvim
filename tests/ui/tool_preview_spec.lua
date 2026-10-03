@@ -180,4 +180,92 @@ describe("ui.chat.tools.preview", function()
 			assert.are.equal(second, Preview.win())
 		end)
 	end)
+
+	describe("streaming", function()
+		---@param text string
+		local function update(text)
+			tools:render(out, {
+				type = "tool_execution_update",
+				toolCallId = "a",
+				toolName = "bash",
+				args = { command = "tail -f log" },
+				partialResult = result(text),
+			})
+		end
+
+		---@return string[]
+		local function float_lines()
+			local win = assert(Preview.win())
+			return vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(win), 0, -1, false)
+		end
+
+		before_each(function()
+			tools:render(out, {
+				type = "tool_execution_start",
+				toolCallId = "a",
+				toolName = "bash",
+				args = { command = "tail -f log" },
+			})
+		end)
+
+		it("writes the output of a running call into the open float", function()
+			Preview.open(assert(tools:display("a")))
+			assert.are.equal("running…", float_lines()[#float_lines()])
+
+			update("one\ntwo")
+			local lines = float_lines()
+			assert.is_true(vim.tbl_contains(lines, "one"))
+			assert.is_true(vim.tbl_contains(lines, "two"))
+
+			update("one\ntwo\nthree")
+			assert.is_true(vim.tbl_contains(float_lines(), "three"))
+		end)
+
+		it("shows the final result when the call ends", function()
+			update("one")
+			Preview.open(assert(tools:display("a")))
+
+			tools:render(out, {
+				type = "tool_execution_end",
+				toolCallId = "a",
+				toolName = "bash",
+				args = { command = "tail -f log" },
+				result = result("one\ndone"),
+			})
+
+			assert.is_true(vim.tbl_contains(float_lines(), "done"))
+		end)
+
+		it("follows the output while the cursor sits on the last line", function()
+			local win = assert(Preview.open(assert(tools:display("a"))))
+			update(table.concat(vim.fn.range(1, 200), "\n"))
+
+			local buf = vim.api.nvim_win_get_buf(win)
+			assert.are.equal(vim.api.nvim_buf_line_count(buf), vim.api.nvim_win_get_cursor(win)[1])
+		end)
+
+		it("stays put once the reader scrolled up", function()
+			local win = assert(Preview.open(assert(tools:display("a"))))
+			update(table.concat(vim.fn.range(1, 50), "\n"))
+			vim.api.nvim_win_set_cursor(win, { 3, 0 })
+
+			update(table.concat(vim.fn.range(1, 100), "\n"))
+			assert.are.equal(3, vim.api.nvim_win_get_cursor(win)[1])
+		end)
+
+		it("leaves a float open on another call alone", function()
+			bash(out, tools, "ls", "a.lua")
+			Preview.open(assert(tools:display("a")))
+
+			tools:render(out, {
+				type = "tool_execution_update",
+				toolCallId = "b",
+				toolName = "bash",
+				args = { command = "other" },
+				partialResult = result("noise"),
+			})
+
+			assert.is_false(vim.tbl_contains(float_lines(), "noise"))
+		end)
+	end)
 end)

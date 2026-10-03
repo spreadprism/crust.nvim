@@ -8,6 +8,8 @@
 ---@field private _status Crust.Chat.Status
 ---@field private _bar Crust.Chat.InputBar
 ---@field private _streaming boolean
+---@field private _cancelling boolean an abort was sent and pi has not settled yet
+---@field private _cancel_timer uv.uv_timer_t? grace period before the hard way out
 ---@field private _augroup integer?
 ---@field private _closing boolean
 ---@field private _session Crust.Chat.Session
@@ -38,6 +40,11 @@ local Replay = require("crust.ui.chat.replay")
 
 local WIDTH_RATIO = 0.4
 
+--- How long pi may take to answer an `abort` before the panel says a second
+--- cancel will take the process down. pi only answers once the agent is idle,
+--- and a tool it cannot kill keeps it busy for as long as the tool lives.
+local CANCEL_GRACE_MS = 5000
+
 --- Window bar title of a session that has neither a name nor a message yet.
 local NEW_SESSION_TITLE = "New session"
 
@@ -50,6 +57,7 @@ function Chat.new(opts)
 	self._id = next_id
 	self._closing = false
 	self._streaming = false
+	self._cancelling = false
 	self._session = {}
 	self._resumed = false
 	self._output = Output.new()
@@ -324,20 +332,97 @@ function Chat:_send(text)
 end
 
 --- Abort the running turn. Does nothing when the agent is idle.
+---
+--- pi answers `abort` only once the agent is idle again, so a tool it cannot
+--- kill — a bash command stuck on its stdin, one past its own `timeout` whose
+--- children survive — leaves the panel cancelling for as long as that tool
+--- lives. Cancelling a second time stops waiting and restarts the process on
+--- the same session.
 ---@return boolean aborted
 function Chat:cancel()
-	if not self._streaming or not self._pi:is_running() then
+	if not self._pi:is_running() then
 		return false
 	end
 
-	local _, err = self._pi:send(Command.abort())
+	if self._cancelling then
+		return self:_force_cancel()
+	end
+
+	if not self._streaming then
+		return false
+	end
+
+	local _, err = self._pi:send(Command.abort(), function(event)
+		if event.success == false then
+			self._output:error(event.error or "abort failed")
+		end
+		self:_settle()
+	end)
 	if err then
 		self._output:error(err)
 		return false
 	end
 
+	self._cancelling = true
 	self._status:set("Cancelling…")
+
+	-- Nothing here kills anything, it only tells the user the escape hatch is
+	-- there: pi may still come back on its own, and usually does.
+	self:_stop_cancel_timer()
+	self._cancel_timer = vim.defer_fn(function()
+		if self._cancelling then
+			self._status:set("Cancelling… (cancel again to restart pi)")
+		end
+	end, CANCEL_GRACE_MS)
+
 	return true
+end
+
+--- Take the process down and come back up on the same session, for when pi
+--- itself is stuck behind a tool that will not die.
+---@private
+---@return boolean restarted
+function Chat:_force_cancel()
+	local session = self._session.file
+
+	self._output:error("pi did not answer the abort, restarting it")
+	self._pi:close()
+	self:_settle()
+
+	if not self:_ensure_running() then
+		return false
+	end
+
+	-- Without a session file there is nothing to come back to: pi starts the
+	-- fresh session it always starts with, and the panel keeps its scrollback.
+	if session then
+		self:load_session(session)
+	else
+		self:refresh_session()
+	end
+
+	return true
+end
+
+--- Back to an idle panel: no spinner, and no call left spinning either.
+---@private
+function Chat:_settle()
+	self:_stop_cancel_timer()
+	self._cancelling = false
+	self._streaming = false
+	self._status:clear()
+	-- A call pi never reported the end of died with the turn, so it failed.
+	self._tools:settle(self._output, "error")
+end
+
+---@private
+function Chat:_stop_cancel_timer()
+	if self._cancel_timer then
+		pcall(function()
+			self._cancel_timer:stop()
+		end)
+		self._cancel_timer = nil
+	end
 end
 
 function Chat:stop()
@@ -346,6 +431,8 @@ end
 
 --- Wipe the transcript, the tool blocks and any running status.
 function Chat:clear()
+	self:_stop_cancel_timer()
+	self._cancelling = false
 	self._streaming = false
 	self._status:clear()
 	self._tools:reset()
@@ -767,12 +854,13 @@ function Chat:_on_event(event)
 	end
 
 	if event.type == "agent_start" then
+		self:_stop_cancel_timer()
+		self._cancelling = false
 		self._streaming = true
 		self._output:header(require("crust.config").get().labels.agent, Highlights.AGENT_TITLE)
 		self._status:set(require("crust.config").get().status_text)
 	elseif event.type == "agent_end" then
-		self._streaming = false
-		self._status:clear()
+		self:_settle()
 		self._output:append("\n")
 	elseif event.type == "message_end" then
 		-- The bill of the message that just finished. An aborted or failed
@@ -794,8 +882,7 @@ function Chat:_on_event(event)
 	elseif event.type == "_stderr" then
 		self._output:error(tostring(event.message))
 	elseif event.type == "_process_exit" then
-		self._streaming = false
-		self._status:clear()
+		self:_settle()
 		self._output:error("pi exited (" .. tostring(event.code) .. ")")
 	end
 end

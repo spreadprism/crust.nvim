@@ -227,9 +227,14 @@ describe("ui.chat", function()
 
 	describe("cancel", function()
 		local sent
+		---@type table<string, fun(event: table)>
+		local replies
+		local closed
 
 		before_each(function()
 			sent = {}
+			replies = {}
+			closed = 0
 			chat._pi = {
 				connect = function()
 					return true
@@ -237,11 +242,16 @@ describe("ui.chat", function()
 				is_running = function()
 					return true
 				end,
-				send = function(_, command)
+				send = function(_, command, callback)
 					sent[#sent + 1] = command.type
+					if callback then
+						replies[command.type] = callback
+					end
 					return "id"
 				end,
-				close = function() end,
+				close = function()
+					closed = closed + 1
+				end,
 			}
 		end)
 
@@ -284,6 +294,51 @@ describe("ui.chat", function()
 			vim.api.nvim_set_current_buf(chat:input():buf())
 			vim.api.nvim_feedkeys(vim.keycode("<C-c>"), "x", false)
 			assert.are.same({ "abort" }, sent)
+		end)
+
+		it("settles the panel when pi answers the abort", function()
+			feed({ { type = "agent_start" } })
+			chat:cancel()
+			assert.is_truthy(replies.abort)
+
+			replies.abort({ type = "response", command = "abort", success = true })
+			assert.is_nil(chat:status():text())
+			assert.is_false(chat._streaming)
+			assert.is_false(chat._cancelling)
+		end)
+
+		it("restarts pi when a second cancel comes while it is still cancelling", function()
+			feed({ { type = "agent_start" } })
+			chat._session = { file = "/tmp/session.jsonl" }
+
+			assert.is_true(chat:cancel())
+			-- pi never answers: it is stuck behind a tool that will not die.
+			assert.is_true(chat:cancel())
+
+			assert.are.equal(1, closed)
+			assert.are.same({ "abort", "switch_session" }, sent)
+			assert.is_false(chat._streaming)
+			assert.is_truthy(table.concat(chat:output():lines(), "\n"):find("restarting it", 1, true))
+		end)
+
+		it("stops a call that pi never reported the end of", function()
+			feed({
+				{ type = "agent_start" },
+				{
+					type = "tool_execution_start",
+					toolCallId = "t",
+					toolName = "bash",
+					args = { command = "sleep 600" },
+				},
+			})
+			assert.are.equal("pending", assert(chat._tools:display("t")).status)
+
+			chat:cancel()
+			replies.abort({ type = "response", command = "abort", success = true })
+
+			assert.are.equal("error", assert(chat._tools:display("t")).status)
+			local error_icon = require("crust.config").get().icons.error
+			assert.is_truthy(table.concat(chat:output():lines(), "\n"):find(error_icon, 1, true))
 		end)
 
 		it("can be unbound", function()

@@ -456,6 +456,36 @@ describe("ui.chat.tools", function()
 			assert.are.same({ "> " .. icons.pending .. " mystery" }, display:lines())
 		end)
 
+		it("shows the result of a tool without a spec of its own", function()
+			local display = Display.new("just", Tools.DEFAULT, { recipe = "test" })
+			display:update({ type = "tool_execution_end", result = result("ran 12 tests\nall good") })
+			assert.are.same({ "ran 12 tests", "all good" }, display:body())
+		end)
+
+		it("shows the partial result of a call still running", function()
+			local display = Display.new("just", Tools.DEFAULT, {})
+			display:update({ type = "tool_execution_update", partialResult = result("building") })
+			assert.are.same({ "building" }, display:body())
+		end)
+
+		it("keeps the head of a long default result and counts the rest", function()
+			local display = Display.new("just", Tools.DEFAULT, {})
+			display:update({
+				type = "tool_execution_end",
+				result = result(table.concat(vim.fn.range(1, 25), "\n")),
+			})
+
+			local body = assert(display:body())
+			assert.are.equal("1", body[1])
+			assert.are.equal("10", body[10])
+			assert.are.equal("… 15 more lines", body[#body])
+		end)
+
+		it("has no body before a tool without a spec answers", function()
+			local display = Display.new("just", Tools.DEFAULT, { recipe = "test" })
+			assert.are.same({}, display:body())
+		end)
+
 		it("renders bash as the command with its output", function()
 			local display = Display.new("bash", Tools.spec("bash"), { command = "ls  -la" })
 			assert.are.equal("ls -la", display:title())
