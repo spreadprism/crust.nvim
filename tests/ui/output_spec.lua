@@ -255,6 +255,43 @@ describe("ui.chat.output", function()
 			}, got)
 		end)
 
+		--- Rows carrying the reasoning highlight.
+		---@return integer[]
+		local function thinking_rows()
+			local rows = {}
+			local marks = vim.api.nvim_buf_get_extmarks(out:buf(), Output.hl_ns, 0, -1, { details = true })
+			for _, mark in ipairs(marks) do
+				if mark[4].line_hl_group == Highlights.THINKING then
+					rows[#rows + 1] = mark[2]
+				end
+			end
+			table.sort(rows)
+			return rows
+		end
+
+		it("highlights every line of the reasoning", function()
+			out:append_thinking("let me")
+			out:append_thinking(" see\nabout it")
+			out:end_thinking()
+			out:append("the answer")
+
+			assert.are.same({ "let me see", "about it", "", "the answer" }, out:lines())
+			assert.are.same({ 0, 1 }, thinking_rows())
+		end)
+
+		-- The regression: reasoning ending in a newline used to leave a mark on
+		-- the blank row under it, and trimming those blanks dragged the mark
+		-- onto everything written afterwards.
+		it("keeps the reasoning off what is written after it", function()
+			out:append_thinking("hmm\nwell\n")
+			out:end_thinking()
+			out:append_block({ "> tool" })
+			out:header("", Highlights.USER_TITLE)
+			out:append_message("my question\n")
+
+			assert.are.same({ 0, 1 }, thinking_rows())
+		end)
+
 		it("writes errors in bold", function()
 			out:error("boom")
 			assert.are.same({ "", "**crust: boom**", "" }, out:lines())

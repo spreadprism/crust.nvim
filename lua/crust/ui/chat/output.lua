@@ -46,8 +46,7 @@ Output.hl_ns = hl_ns
 
 ---@class Crust.Chat.Output.Thinking
 ---@field row integer 0-based row the reasoning starts on
----@field col integer byte column it starts at
----@field id integer? extmark id of the highlight, nil until the first chunk
+---@field ids integer[] one extmark per row of the region
 
 ---@return Crust.Chat.Output
 function Output.new()
@@ -471,8 +470,14 @@ end
 --- Append streamed reasoning text, highlighted as a comment.
 ---
 --- Consecutive chunks extend one region: the deltas arrive cut at arbitrary
---- points, so the highlight is a single extmark that is grown instead of one
---- per chunk.
+--- points, so the marks already drawn are reused and the new rows get their
+--- own.
+---
+--- Reasoning is highlighted per line, not as one range from the first to the
+--- last row. A range ending at the end of a line swallows everything written
+--- there later — and that is exactly where the next header or tool block is
+--- appended, after the blank lines under it are trimmed — which painted the
+--- rest of the conversation grey.
 ---@param text string
 function Output:append_thinking(text)
 	if not vim.api.nvim_buf_is_valid(self._buf) or text == "" then
@@ -483,25 +488,38 @@ function Output:append_thinking(text)
 		if self:_trim_trailing_blanks() then
 			self:append("\n\n")
 		end
-		local row = vim.api.nvim_buf_line_count(self._buf) - 1
-		local line = vim.api.nvim_buf_get_lines(self._buf, row, row + 1, false)[1] or ""
-		self._thinking = { row = row, col = #line }
+		self._thinking = { row = vim.api.nvim_buf_line_count(self._buf) - 1, ids = {} }
 	end
 
 	self:append(text)
 
+	local first = self._thinking.row
 	local last = vim.api.nvim_buf_line_count(self._buf) - 1
-	local line = vim.api.nvim_buf_get_lines(self._buf, last, last + 1, false)[1] or ""
-	self._thinking.id = vim.api.nvim_buf_set_extmark(self._buf, hl_ns, self._thinking.row, self._thinking.col, {
-		id = self._thinking.id,
-		end_row = last,
-		end_col = #line,
-		hl_group = Highlights.THINKING,
-		priority = THINKING_PRIORITY,
-	})
+	local lines = vim.api.nvim_buf_get_lines(self._buf, first, last + 1, false)
+	for row = first, last do
+		local index = row - first + 1
+		-- Blank rows are left unmarked: nothing is visible on them anyway, and
+		-- a mark on the trailing one survives the trimming of those blanks and
+		-- lands on whatever is written there next.
+		if (lines[index] or "") == "" then
+			goto continue
+		end
+		self._thinking.ids[index] = vim.api.nvim_buf_set_extmark(self._buf, hl_ns, row, 0, {
+			id = self._thinking.ids[index],
+			line_hl_group = Highlights.THINKING,
+			priority = THINKING_PRIORITY,
+			-- Reasoning that ends in a newline leaves a mark on an empty last
+			-- row, which is exactly where the next text is inserted: with the
+			-- default gravity the mark would ride along and grey it out.
+			right_gravity = false,
+		})
+		::continue::
+	end
 end
 
 --- Close the open reasoning region, so what follows reads as the answer.
+--- The marks stay where they are: they are per row, and later text lands on
+--- rows of its own.
 function Output:end_thinking()
 	if not self._thinking then
 		return

@@ -182,7 +182,7 @@ describe("ui.chat", function()
 				{ details = true }
 			)
 			local groups = vim.tbl_map(function(mark)
-				return mark[4].hl_group
+				return mark[4].line_hl_group
 			end, marks)
 			assert.is_true(vim.tbl_contains(groups, require("crust.ui.highlights").THINKING))
 		end)
