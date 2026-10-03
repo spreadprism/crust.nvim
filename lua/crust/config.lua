@@ -34,6 +34,11 @@ local M = {}
 --- A component table given in `setup` replaces the default one's icon: the
 --- icon is whatever that table says, and `nil` (or `false`) means none.
 
+---@class Crust.Config.QuickPrompt one-shot buffer edits, see `crust.quickprompt`
+---@field enabled boolean start the second pi process after `setup`
+---@field model string model of that process, small and fast by default
+---@field context_lines integer lines kept on each side of the cursor in normal mode
+
 ---@class Crust.Config.Thinking
 ---@field enabled boolean show the model's reasoning in the scrollback, highlighted as a comment
 
@@ -86,6 +91,7 @@ local M = {}
 ---@field window Crust.Config.Window chat panel geometry
 ---@field input_bar Crust.Config.InputBar cost and model under the prompt
 ---@field thinking Crust.Config.Thinking the model's reasoning text
+---@field quickprompt Crust.Config.QuickPrompt inline edits, outside the chat
 ---@field raw_tool_blocks boolean keep tool blocks out of the markdown tree
 M.defaults = {
 	bin = "pi",
@@ -106,6 +112,13 @@ M.defaults = {
 	spinner = "robot",
 	thinking = {
 		enabled = true,
+	},
+	-- One instruction, one edit: the cheapest model that can hold a file in
+	-- its head is the right one here.
+	quickprompt = {
+		enabled = true,
+		model = "anthropic/claude-haiku-4-5",
+		context_lines = 5,
 	},
 	status_text = "",
 	keymaps = {

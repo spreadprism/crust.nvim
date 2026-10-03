@@ -162,6 +162,19 @@ function M.smart(opts)
 	return M.send(opts)
 end
 
+--- Ask the quickprompt model for one edit of the buffer you are in.
+---
+--- Normal mode sends the file plus the lines around the cursor, visual mode
+--- the file plus the selection. The model answers by editing the file, or
+--- by reporting why it did not, which lands in `vim.notify`. Nothing of
+--- this touches the chat: it is a separate, smaller pi process.
+---@param opts? Crust.QuickPrompt.Opts
+---@param callback? fun(ok: boolean, err: string?)
+---@return boolean asked false when the buffer has no file to edit
+function M.quickprompt(opts, callback)
+	return require("crust.quickprompt").ask(opts, callback)
+end
+
 --- Copy the conversation into a scratch buffer, for searching or yanking
 --- outside the read-only panel.
 ---@return integer buf
@@ -202,6 +215,7 @@ function M.stop()
 		chat:stop()
 		chat = nil
 	end
+	require("crust.quickprompt").stop()
 	dir = nil
 	require("crust.sessions.cache").stop()
 end
@@ -230,6 +244,10 @@ function M.dir_changed(cwd)
 		chat:stop()
 		chat = nil
 	end
+
+	-- The quickprompt process is bound to its cwd the same way, and it comes
+	-- back up by itself on the next instruction.
+	require("crust.quickprompt").stop()
 
 	if require("crust.config").get().preload.sessions ~= false then
 		require("crust.sessions.cache").warm(cwd)
@@ -270,6 +288,10 @@ function M.setup(opts)
 	require("crust.extension").setup()
 
 	M.watch_dir()
+
+	-- Its own process, started next tick so the first instruction does not
+	-- wait for pi to come up.
+	require("crust.quickprompt").setup()
 
 	M.preload()
 end
