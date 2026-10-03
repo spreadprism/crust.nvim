@@ -807,15 +807,14 @@ local function insert(buf, row, col, text)
 
 	local win = vim.api.nvim_get_current_win()
 	local showing = vim.api.nvim_win_get_buf(win) == buf
-	local cursor = showing and vim.api.nvim_win_get_cursor(win) or nil
 
 	vim.api.nvim_buf_set_text(buf, row, col, row, col, { text })
 
-	-- Text inserted at the cursor pushes it along, the way typing does. The
-	-- completion lands *after* the cursor, exactly where the ghost text was
-	-- drawn, so the cursor is put back where it was.
-	if cursor then
-		pcall(vim.api.nvim_win_set_cursor, win, cursor)
+	-- Behind what was accepted, as if it had been typed: that is where the
+	-- next keystroke belongs. Set rather than left to nvim's own shifting,
+	-- so a deferred write (see `accept_completion`) lands the same way.
+	if showing then
+		pcall(vim.api.nvim_win_set_cursor, win, { row + 1, col + #text })
 	end
 end
 

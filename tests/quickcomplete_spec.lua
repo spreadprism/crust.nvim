@@ -606,12 +606,12 @@ describe("quickcomplete", function()
 			QuickComplete.show_completion()
 		end)
 
-		it("inserts the ghost text after the cursor, which stays put", function()
+		it("inserts the ghost text and leaves the cursor behind it", function()
 			assert.is_true(QuickComplete.accept_completion())
 
 			assert.are.equal("\tprint(a + b)", vim.api.nvim_buf_get_lines(buf, 1, 2, false)[1])
-			-- The cursor does not move: the completion lands after it.
-			assert.are.same({ 2, 7 }, vim.api.nvim_win_get_cursor(0))
+			-- Where typing would have left it: at the end of what was taken.
+			assert.are.same({ 2, 12 }, vim.api.nvim_win_get_cursor(0))
 			assert.is_false(QuickComplete.visible())
 			assert.are.same({}, marks())
 		end)
