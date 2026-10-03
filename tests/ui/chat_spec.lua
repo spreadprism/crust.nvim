@@ -164,7 +164,32 @@ describe("ui.chat", function()
 			assert.are.same({ header(labels.agent), "", "Hello", "" }, chat:output():lines())
 		end)
 
-		it("ignores non-text assistant events", function()
+		it("shows thinking above the answer, highlighted as a comment", function()
+			feed({
+				{ type = "agent_start" },
+				{ type = "message_update", assistantMessageEvent = { type = "thinking_delta", delta = "hmm" } },
+				{ type = "message_update", assistantMessageEvent = { type = "thinking_delta", delta = " ok" } },
+				{ type = "message_update", assistantMessageEvent = { type = "text_delta", delta = "hi" } },
+			})
+
+			assert.are.same({ header(labels.agent), "", "hmm ok", "", "hi" }, chat:output():lines())
+
+			local marks = vim.api.nvim_buf_get_extmarks(
+				chat:output():buf(),
+				require("crust.ui.chat.output").hl_ns,
+				{ 2, 0 },
+				{ 2, -1 },
+				{ details = true }
+			)
+			local groups = vim.tbl_map(function(mark)
+				return mark[4].hl_group
+			end, marks)
+			assert.is_true(vim.tbl_contains(groups, require("crust.ui.highlights").THINKING))
+		end)
+
+		it("drops thinking when it is disabled", function()
+			config.config = nil
+			config.options = { thinking = { enabled = false } }
 			feed({
 				{ type = "agent_start" },
 				{ type = "message_update", assistantMessageEvent = { type = "thinking_delta", delta = "hmm" } },

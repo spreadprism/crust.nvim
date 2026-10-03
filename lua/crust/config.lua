@@ -34,6 +34,9 @@ local M = {}
 --- A component table given in `setup` replaces the default one's icon: the
 --- icon is whatever that table says, and `nil` (or `false`) means none.
 
+---@class Crust.Config.Thinking
+---@field enabled boolean show the model's reasoning in the scrollback, highlighted as a comment
+
 ---@class Crust.Config.Window
 ---@field input_min_height integer smallest height of the prompt window, a taller one set by hand is kept
 ---@field auto_insert boolean start insert mode whenever the prompt takes focus
@@ -82,6 +85,7 @@ local M = {}
 ---@field keymaps Crust.Config.Keymaps
 ---@field window Crust.Config.Window chat panel geometry
 ---@field input_bar Crust.Config.InputBar cost and model under the prompt
+---@field thinking Crust.Config.Thinking the model's reasoning text
 ---@field raw_tool_blocks boolean keep tool blocks out of the markdown tree
 M.defaults = {
 	bin = "pi",
@@ -100,6 +104,9 @@ M.defaults = {
 	},
 	timestamp_format = "%b %-d %Y, %H:%M",
 	spinner = "robot",
+	thinking = {
+		enabled = true,
+	},
 	status_text = "",
 	keymaps = {
 		cancel = "<C-c>",

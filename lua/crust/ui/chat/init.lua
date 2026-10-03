@@ -861,6 +861,7 @@ function Chat:_on_event(event)
 		self._status:set(require("crust.config").get().status_text)
 	elseif event.type == "agent_end" then
 		self:_settle()
+		self._output:end_thinking()
 		self._output:append("\n")
 	elseif event.type == "message_end" then
 		-- The bill of the message that just finished. An aborted or failed
@@ -875,9 +876,16 @@ function Chat:_on_event(event)
 	elseif event.type == "message_update" then
 		local ev = event.assistantMessageEvent
 		if ev and ev.type == "text_delta" and ev.delta then
+			-- The answer starts here, whatever the model was mulling over.
+			self._output:end_thinking()
 			self._output:append(ev.delta)
+		elseif ev and ev.type == "thinking_delta" and ev.delta then
+			if require("crust.config").get().thinking.enabled then
+				self._output:append_thinking(ev.delta)
+			end
 		end
 	elseif Tools.handles(event.type) then
+		self._output:end_thinking()
 		self._tools:render(self._output, event)
 	elseif event.type == "_stderr" then
 		self._output:error(tostring(event.message))

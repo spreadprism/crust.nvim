@@ -42,6 +42,23 @@ function M.text(content)
 	return table.concat(parts, "\n")
 end
 
+--- Concatenated reasoning of a message body, empty when it holds none.
+---@param content string|Crust.Pi.Content[]|nil
+---@return string
+function M.thinking(content)
+	if type(content) ~= "table" then
+		return ""
+	end
+
+	local parts = {}
+	for _, part in ipairs(content) do
+		if type(part) == "table" and part.type == "thinking" and part.thinking and part.thinking ~= "" then
+			parts[#parts + 1] = part.thinking
+		end
+	end
+	return table.concat(parts, "\n")
+end
+
 --- Tool calls of an assistant message, in order.
 ---@param content string|Crust.Pi.Content[]|nil
 ---@return Crust.Pi.ToolCall[]
@@ -79,13 +96,19 @@ end
 ---@param tools Crust.Chat.Tools
 ---@param message Crust.Pi.Message
 local function assistant(output, tools, message)
+	local config = require("crust.config").get()
 	local text = M.text(message.content)
 	local calls = M.tool_calls(message.content)
-	if text == "" and #calls == 0 then
+	local thinking = config.thinking.enabled and M.thinking(message.content) or ""
+	if text == "" and thinking == "" and #calls == 0 then
 		return
 	end
 
-	output:header(require("crust.config").get().labels.agent, Highlights.AGENT_TITLE, seconds(message.timestamp))
+	output:header(config.labels.agent, Highlights.AGENT_TITLE, seconds(message.timestamp))
+	if thinking ~= "" then
+		output:append_thinking(thinking)
+		output:end_thinking()
+	end
 	if text ~= "" then
 		output:append(text .. "\n")
 	end

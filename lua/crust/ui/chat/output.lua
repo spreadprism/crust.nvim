@@ -12,6 +12,7 @@
 ---@field private _title string?
 ---@field private _regions_timer uv.uv_timer_t?
 ---@field private _batch boolean a bulk write is running, draw once at the end
+---@field private _thinking Crust.Chat.Output.Thinking? open reasoning region, nil when none
 local Output = {}
 Output.__index = Output
 
@@ -27,6 +28,10 @@ local Mentions = require("crust.ui.mentions")
 --- Quiet period before the markdown regions are recomputed.
 local REGIONS_DEBOUNCE_MS = 50
 
+--- Above treesitter (100) and render-markdown, so reasoning stays grey
+--- whatever the text inside it looks like.
+local THINKING_PRIORITY = 200
+
 --- Tracks appended blocks so they can be rewritten after later appends.
 local ns = vim.api.nvim_create_namespace("crust.chat.output.blocks")
 --- Highlights belonging to blocks, cleared and reapplied on every rewrite.
@@ -38,6 +43,11 @@ Output.hl_ns = hl_ns
 ---@class Crust.Chat.Output.Block
 ---@field id integer extmark id anchoring the first line
 ---@field count integer number of lines the block currently occupies
+
+---@class Crust.Chat.Output.Thinking
+---@field row integer 0-based row the reasoning starts on
+---@field col integer byte column it starts at
+---@field id integer? extmark id of the highlight, nil until the first chunk
 
 ---@return Crust.Chat.Output
 function Output.new()
@@ -458,6 +468,49 @@ function Output:append_message(text)
 	Mentions.highlight(self._buf, first, -1)
 end
 
+--- Append streamed reasoning text, highlighted as a comment.
+---
+--- Consecutive chunks extend one region: the deltas arrive cut at arbitrary
+--- points, so the highlight is a single extmark that is grown instead of one
+--- per chunk.
+---@param text string
+function Output:append_thinking(text)
+	if not vim.api.nvim_buf_is_valid(self._buf) or text == "" then
+		return
+	end
+
+	if not self._thinking then
+		if self:_trim_trailing_blanks() then
+			self:append("\n\n")
+		end
+		local row = vim.api.nvim_buf_line_count(self._buf) - 1
+		local line = vim.api.nvim_buf_get_lines(self._buf, row, row + 1, false)[1] or ""
+		self._thinking = { row = row, col = #line }
+	end
+
+	self:append(text)
+
+	local last = vim.api.nvim_buf_line_count(self._buf) - 1
+	local line = vim.api.nvim_buf_get_lines(self._buf, last, last + 1, false)[1] or ""
+	self._thinking.id = vim.api.nvim_buf_set_extmark(self._buf, hl_ns, self._thinking.row, self._thinking.col, {
+		id = self._thinking.id,
+		end_row = last,
+		end_col = #line,
+		hl_group = Highlights.THINKING,
+		priority = THINKING_PRIORITY,
+	})
+end
+
+--- Close the open reasoning region, so what follows reads as the answer.
+function Output:end_thinking()
+	if not self._thinking then
+		return
+	end
+
+	self._thinking = nil
+	self:append("\n\n")
+end
+
 ---@param message string
 function Output:error(message)
 	self:append("\n**crust: " .. message .. "**\n")
@@ -471,6 +524,7 @@ end
 
 function Output:clear()
 	self._blocks = {}
+	self._thinking = nil
 	vim.bo[self._buf].modifiable = true
 	vim.api.nvim_buf_clear_namespace(self._buf, ns, 0, -1)
 	vim.api.nvim_buf_clear_namespace(self._buf, hl_ns, 0, -1)
