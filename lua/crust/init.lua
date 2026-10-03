@@ -195,6 +195,33 @@ function M.hide_completion()
 	require("crust.quickcomplete").hide_completion()
 end
 
+--- Show the next suggestion of the current line, wrapping around.
+---@return boolean shown
+function M.next_completion()
+	return require("crust.quickcomplete").next_completion()
+end
+
+--- Show the previous suggestion of the current line, wrapping around.
+---@return boolean shown
+function M.prev_completion()
+	return require("crust.quickcomplete").prev_completion()
+end
+
+--- Ask for one more suggestion, keeping the ones already given. This is
+--- what `show_completion` does by itself when what it would show is already
+--- drawn.
+---@return boolean asked
+function M.more_completion()
+	return require("crust.quickcomplete").more_completion()
+end
+
+--- Throw the suggestion on screen away for good: it leaves the ring and the
+--- model is told never to offer it again.
+---@return boolean asked
+function M.refuse_completion()
+	return require("crust.quickcomplete").refuse_completion()
+end
+
 --- Copy the conversation into a scratch buffer, for searching or yanking
 --- outside the read-only panel.
 ---@return integer buf

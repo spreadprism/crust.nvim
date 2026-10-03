@@ -47,6 +47,7 @@ local M = {}
 ---@field window_lines integer lines of context kept before the cursor
 ---@field suffix_lines integer lines kept after it, fewer: a line needs what leads up to it
 ---@field window_step integer the window start is snapped to this many lines, so typing does not move it
+---@field max_suggestions integer answers held per context before the model is out of ideas
 ---@field cache_size integer completions remembered, keyed by their context
 
 ---@class Crust.Config.Thinking
@@ -143,6 +144,7 @@ M.defaults = {
 		window_lines = 40,
 		suffix_lines = 15,
 		window_step = 20,
+		max_suggestions = 5,
 		cache_size = 64,
 	},
 	status_text = "",

@@ -405,6 +405,31 @@ function Chat:_force_cancel()
 end
 
 --- Back to an idle panel: no spinner, and no call left spinning either.
+--- A line pi wrote to stderr, usually a provider failure.
+---
+--- The panel gets the sentence, not the json wall. A failure that retrying
+--- cannot fix — a rate limit above all — also ends the turn then and there:
+--- pi retries by itself otherwise, and the panel would spin for minutes
+--- against a provider that has already said no.
+---@private
+---@param message string
+function Chat:_on_stderr(message)
+	local Errors = require("crust.pi.errors")
+	self._output:error(Errors.pretty(message))
+
+	if not Errors.is_fatal(message) or not self._streaming then
+		return
+	end
+
+	if self._pi:is_running() then
+		-- `abort_retry` stops a retry already scheduled, `abort` the turn
+		-- that would schedule the next one.
+		self._pi:send(Command.abort_retry())
+		self._pi:send(Command.abort())
+	end
+	self:_settle()
+end
+
 ---@private
 function Chat:_settle()
 	self:_stop_cancel_timer()
@@ -888,7 +913,7 @@ function Chat:_on_event(event)
 		self._output:end_thinking()
 		self._tools:render(self._output, event)
 	elseif event.type == "_stderr" then
-		self._output:error(tostring(event.message))
+		self:_on_stderr(tostring(event.message))
 	elseif event.type == "_process_exit" then
 		self:_settle()
 		self._output:error("pi exited (" .. tostring(event.code) .. ")")

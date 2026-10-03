@@ -20,6 +20,7 @@ local Pi = {}
 Pi.__index = Pi
 
 local Command = require("crust.pi.rpc")
+local Errors = require("crust.pi.errors")
 local Log = require("crust.log")
 local Extension = require("crust.extension")
 local Prompt = require("crust.prompt")
@@ -317,10 +318,10 @@ function Pi:_on_stderr(data)
 		return
 	end
 
-	for _, line in ipairs(data) do
-		if line ~= "" then
-			self:_dispatch({ type = "_stderr", message = line })
-		end
+	-- A provider error is one json body wrapped over several lines; the
+	-- halves are useless apart, so they are dispatched as one message.
+	for _, line in ipairs(Errors.join(data)) do
+		self:_dispatch({ type = "_stderr", message = line })
 	end
 end
 

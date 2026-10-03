@@ -244,6 +244,47 @@ describe("ui.chat", function()
 			assert.is_false(chat._streaming)
 		end)
 
+		it("sums a provider failure up instead of printing the json", function()
+			feed({
+				{ type = "agent_start" },
+				{
+					type = "_stderr",
+					message = 'Error: 503 {"error":{"type":"overloaded_error","message":"Overloaded"}}',
+				},
+			})
+
+			local text = table.concat(chat:output():lines(), "\n")
+			assert.is_truthy(text:find("**crust: overloaded (503): Overloaded**", 1, true))
+			-- Transient: pi retries by itself, the turn goes on.
+			assert.is_true(chat._streaming)
+		end)
+
+		it("ends the turn on a rate limit instead of waiting out pi's retries", function()
+			local sent = {}
+			chat._pi = {
+				is_running = function()
+					return true
+				end,
+				send = function(_, command)
+					sent[#sent + 1] = command.type
+					return "id"
+				end,
+			}
+
+			feed({
+				{ type = "agent_start" },
+				{
+					type = "_stderr",
+					message = 'Error: 429 {"error":{"type":"rate_limit_error","message":"slow down"}}',
+				},
+			})
+
+			local text = table.concat(chat:output():lines(), "\n")
+			assert.is_truthy(text:find("**crust: rate limit (429): slow down**", 1, true))
+			assert.are.same({ "abort_retry", "abort" }, sent)
+			assert.is_false(chat._streaming)
+		end)
+
 		it("ignores unknown events", function()
 			feed({ { type = "queue_update", steering = {} } })
 			assert.are.same({ "" }, chat:output():lines())

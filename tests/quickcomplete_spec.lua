@@ -110,6 +110,7 @@ describe("quickcomplete", function()
 			assert.are.equal(40, cfg.window_lines)
 			assert.are.equal(15, cfg.suffix_lines)
 			assert.are.equal(20, cfg.window_step)
+			assert.are.equal(5, cfg.max_suggestions)
 			assert.are.equal(64, cfg.cache_size)
 		end)
 	end)
@@ -459,6 +460,142 @@ describe("quickcomplete", function()
 			assert.are.same({}, sent("prompt"))
 
 			vim.api.nvim_buf_delete(panel, { force = true })
+		end)
+	end)
+
+	describe("cycling suggestions", function()
+		local function shown()
+			QuickComplete.show_completion()
+			answer("a + b")
+		end
+
+		it("asks for another one, keeping the first", function()
+			shown()
+			assert.are.equal("a + b", QuickComplete.text())
+
+			-- Asking for what is already drawn: one answer was not enough.
+			assert.is_true(QuickComplete.show_completion())
+			assert.are.equal(2, #sent("prompt"))
+			assert.is_truthy(sent("prompt")[2].message:find("<|offered|> a + b", 1, true))
+
+			answer("c + d")
+			assert.are.equal("c + d", QuickComplete.text())
+			assert.are.same({ "a + b", "c + d" }, QuickComplete.suggestions(QuickComplete.context()))
+		end)
+
+		it("counts the ring after the suggestion", function()
+			shown()
+			-- One answer, nothing to count.
+			assert.are.same({ { "a + b", Highlights.GHOST_TEXT } }, marks()[1][4].virt_text)
+
+			QuickComplete.show_completion()
+			answer("c + d")
+
+			assert.are.same({
+				{ "c + d", Highlights.GHOST_TEXT },
+				{ " (2/2)", Highlights.GHOST_COUNT },
+			}, marks()[1][4].virt_text)
+			assert.are.equal(2, QuickComplete.status().index)
+			assert.are.equal(2, QuickComplete.status().total)
+		end)
+
+		it("walks the ring with next and prev, wrapping around", function()
+			shown()
+			QuickComplete.show_completion()
+			answer("c + d")
+
+			assert.is_true(QuickComplete.next_completion())
+			assert.are.equal("a + b", QuickComplete.text())
+			assert.is_true(QuickComplete.next_completion())
+			assert.are.equal("c + d", QuickComplete.text())
+
+			assert.is_true(QuickComplete.prev_completion())
+			assert.are.equal("a + b", QuickComplete.text())
+
+			-- Cycling never asks the model anything.
+			assert.are.equal(2, #sent("prompt"))
+		end)
+
+		it("has nothing to cycle with a single suggestion", function()
+			shown()
+			assert.is_false(QuickComplete.next_completion())
+			assert.is_false(QuickComplete.prev_completion())
+			assert.are.equal("a + b", QuickComplete.text())
+		end)
+
+		it("shows the suggestion it was left on", function()
+			shown()
+			QuickComplete.show_completion()
+			answer("c + d")
+			QuickComplete.next_completion()
+
+			QuickComplete.hide_completion()
+			assert.is_true(QuickComplete.show_completion())
+			assert.are.equal("a + b", QuickComplete.text())
+		end)
+
+		it("gives up after max_suggestions", function()
+			config.options = { quickcomplete = { max_suggestions = 2 } }
+			config.config = nil
+
+			shown()
+			QuickComplete.show_completion()
+			answer("c + d")
+
+			assert.is_false(QuickComplete.show_completion())
+			assert.are.equal(2, #sent("prompt"))
+		end)
+	end)
+
+	describe("refusing a suggestion", function()
+		local function two()
+			QuickComplete.show_completion()
+			answer("a + b")
+			QuickComplete.show_completion()
+			answer("c + d")
+		end
+
+		it("drops the suggestion and falls back to what is left", function()
+			two()
+
+			assert.is_true(QuickComplete.refuse_completion())
+			assert.are.equal("a + b", QuickComplete.text())
+			assert.are.same({ "a + b" }, QuickComplete.suggestions(QuickComplete.context()))
+			assert.are.same({ "c + d" }, QuickComplete.refused(QuickComplete.context()))
+			assert.are.equal(2, #sent("prompt"))
+		end)
+
+		it("asks for a new one when the ring runs out", function()
+			QuickComplete.show_completion()
+			answer("a + b")
+
+			assert.is_true(QuickComplete.refuse_completion())
+			assert.is_false(QuickComplete.visible())
+			assert.are.equal(2, #sent("prompt"))
+			assert.is_truthy(sent("prompt")[2].message:find("<|refused|> a + b", 1, true))
+		end)
+
+		it("never offers a refused answer again", function()
+			two()
+			QuickComplete.refuse_completion()
+			QuickComplete.show_completion()
+
+			assert.is_truthy(sent("prompt")[3].message:find("<|refused|> c + d", 1, true))
+			assert.is_truthy(sent("prompt")[3].message:find("<|offered|> a + b", 1, true))
+		end)
+
+		it("has nothing to refuse without ghost text", function()
+			assert.is_false(QuickComplete.refuse_completion())
+			assert.are.same({}, sent("prompt"))
+		end)
+
+		it("forgets the ring with the cache", function()
+			two()
+			QuickComplete.clear_cache()
+
+			local context = QuickComplete.context()
+			assert.are.same({}, QuickComplete.suggestions(context))
+			assert.are.same({}, QuickComplete.refused(context))
 		end)
 	end)
 

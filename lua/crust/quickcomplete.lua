@@ -51,7 +51,9 @@ local SYSTEM_PROMPT = table.concat({
 ---@field state Crust.QuickComplete.State
 ---@field busy boolean
 ---@field visible boolean ghost text is on screen
----@field cached integer completions held in the cache
+---@field cached integer contexts held in the cache
+---@field index integer which suggestion is drawn, 0 when none is
+---@field total integer suggestions held for the drawn context
 ---@field message string? error of the last request
 
 ---@class Crust.QuickComplete.Context
@@ -78,10 +80,18 @@ local client = nil
 ---@type uv.uv_timer_t?
 local timer = nil
 
---- Context -> answer. Capped, oldest dropped first. The window the answer
---- was given for is kept with it, so an answer can be reused for a context
---- that only typed into it.
----@type table<string, { completion: string, prefix: string, suffix: string }>
+--- Context -> the answers given for it, in the order they arrived, plus
+--- which one is on screen and which were thrown away. Capped, oldest
+--- context dropped first. The window is kept with them, so the answers can
+--- be reused for a context that only typed into it.
+---@class Crust.QuickComplete.Entry
+---@field list string[] suggestions, oldest first
+---@field index integer 1-based, which of them is current
+---@field refused string[] answers the user asked away, never offered again
+---@field prefix string window the answers were written for
+---@field suffix string
+
+---@type table<string, Crust.QuickComplete.Entry>
 local cache = {}
 ---@type string[] insertion order of `cache`
 local order = {}
@@ -91,15 +101,17 @@ local order = {}
 local inflight = nil
 
 --- Where the ghost text is drawn, nil when nothing is shown.
----@type { buf: integer, id: integer, text: string, row: integer, col: integer }?
+---@type { buf: integer, id: integer, text: string, row: integer, col: integer, index: integer, total: integer }?
 local ghost = nil
 
 ---@type Crust.QuickComplete.Status
-local state = { state = "idle", busy = false, visible = false, cached = 0 }
+local state = { state = "idle", busy = false, visible = false, cached = 0, index = 0, total = 0 }
 
 local function announce()
 	state.cached = #order
 	state.visible = ghost ~= nil
+	state.index = ghost and ghost.index or 0
+	state.total = ghost and ghost.total or 0
 	state.busy = state.state == "running"
 	pcall(vim.api.nvim_exec_autocmds, "User", { pattern = M.EVENT, modeline = false })
 end
@@ -119,19 +131,74 @@ end
 
 --- Cache ------------------------------------------------------------------
 
+--- The suggestions held for `context`, nil when it has none.
+---@param context Crust.QuickComplete.Context
+---@return Crust.QuickComplete.Entry?
+local function entry_of(context)
+	return cache[context.key]
+end
+
+--- Suggestions for `context`, oldest first.
+---@param context Crust.QuickComplete.Context
+---@return string[]
+function M.suggestions(context)
+	local entry = entry_of(context)
+	return entry and vim.deepcopy(entry.list) or {}
+end
+
+--- Answers already refused for `context`, oldest first.
+---@param context Crust.QuickComplete.Context
+---@return string[]
+function M.refused(context)
+	local entry = entry_of(context)
+	return entry and vim.deepcopy(entry.refused) or {}
+end
+
+--- Everything the model has already been asked not to repeat: the answers
+--- it gave and the ones the user threw away.
+---@param context Crust.QuickComplete.Context
+---@return integer
+local function offered_count(context)
+	local entry = entry_of(context)
+	if not entry then
+		return 0
+	end
+	return #entry.list + #entry.refused
+end
+
+--- Keep a new answer, as the current one.
 ---@param context Crust.QuickComplete.Context
 ---@param completion string
+---@return Crust.QuickComplete.Entry
 local function remember(context, completion)
-	if cache[context.key] == nil then
+	local entry = cache[context.key]
+	if not entry then
+		entry = { list = {}, index = 0, refused = {}, prefix = context.prefix, suffix = context.suffix }
+		cache[context.key] = entry
 		order[#order + 1] = context.key
 	end
-	cache[context.key] = { completion = completion, prefix = context.prefix, suffix = context.suffix }
+
+	local at = nil
+	for index, known in ipairs(entry.list) do
+		if known == completion then
+			at = index
+			break
+		end
+	end
+
+	if not at then
+		entry.list[#entry.list + 1] = completion
+		at = #entry.list
+	end
+	entry.index = at
 
 	local max = require("crust.config").get().quickcomplete.cache_size
 	while #order > max do
 		local oldest = table.remove(order, 1)
 		cache[oldest] = nil
 	end
+
+	return entry
 end
 
 --- The answer for `context`, if one is known.
@@ -143,17 +210,20 @@ end
 --- instead of one request per keystroke.
 ---@param context Crust.QuickComplete.Context
 ---@return string? completion
+---@return integer index 1-based position in the suggestions, 0 when reused
+---@return integer total suggestions held for this context
 function M.completion(context)
-	local exact = cache[context.key]
-	if exact then
-		return exact.completion
+	local exact = entry_of(context)
+	if exact and exact.index > 0 then
+		return exact.list[exact.index], exact.index, #exact.list
 	end
 
 	for index = #order, 1, -1 do
 		local entry = cache[order[index]]
+		local current = entry and entry.index > 0 and entry.list[entry.index]
 		if
-			entry
-			and entry.completion ~= ""
+			current
+			and current ~= ""
 			-- What follows the cursor has to be untouched: the answer was
 			-- written to fit in front of it.
 			and entry.suffix == context.suffix
@@ -161,13 +231,15 @@ function M.completion(context)
 			and context.prefix:sub(1, #entry.prefix) == entry.prefix
 		then
 			local typed = context.prefix:sub(#entry.prefix + 1)
-			if #typed < #entry.completion and entry.completion:sub(1, #typed) == typed then
-				return entry.completion:sub(#typed + 1)
+			if #typed < #current and current:sub(1, #typed) == typed then
+				-- A leftover of another context: it is one suggestion, with no
+				-- ring of its own to count through.
+				return current:sub(#typed + 1), 0, 0
 			end
 		end
 	end
 
-	return nil
+	return nil, 0, 0
 end
 
 function M.clear_cache()
@@ -264,14 +336,26 @@ end
 ---@param context Crust.QuickComplete.Context
 ---@return string
 function M.prompt(context)
-	return table.concat({
+	local parts = {
 		"<|language|> " .. (context.filetype ~= "" and context.filetype or "text"),
 		"<|prefix|>",
 		context.prefix,
 		"<|suffix|>",
 		context.suffix,
-		"<|complete|>",
-	}, "\n")
+	}
+
+	-- Everything the user has already seen for this spot. Listing it is the
+	-- whole instruction: whatever comes next has to be something else.
+	local entry = cache[context.key]
+	for _, answer in ipairs(entry and entry.list or {}) do
+		parts[#parts + 1] = "<|offered|> " .. answer
+	end
+	for _, answer in ipairs(entry and entry.refused or {}) do
+		parts[#parts + 1] = "<|refused|> " .. answer
+	end
+
+	parts[#parts + 1] = "<|complete|>"
+	return table.concat(parts, "\n")
 end
 
 --- Drop the part of the answer that is already on the line.
@@ -356,17 +440,27 @@ function M.hide_completion()
 end
 
 --- Draw `completion` at the cursor of `context`.
+---
+--- When the context holds more than one suggestion the position in the ring
+--- is drawn after it, `(2/3)`, so cycling says where it got to.
 ---@param completion string
 ---@param context Crust.QuickComplete.Context
+---@param index? integer 1-based, which suggestion this is
+---@param total? integer how many there are
 ---@return boolean shown false for an empty completion
-local function render(completion, context)
+local function render(completion, context, index, total)
 	M.hide_completion()
 	if completion == "" or not M.insert_mode() then
 		return false
 	end
 
+	local chunks = { { completion, Highlights.GHOST_TEXT } }
+	if index and total and total > 1 then
+		chunks[#chunks + 1] = { " (" .. index .. "/" .. total .. ")", Highlights.GHOST_COUNT }
+	end
+
 	local id = vim.api.nvim_buf_set_extmark(context.buf, ns, context.row, context.col, {
-		virt_text = { { completion, Highlights.GHOST_TEXT } },
+		virt_text = chunks,
 		virt_text_pos = "inline",
 		-- Inline virtual text sits at the cursor's own byte position, and the
 		-- gravity decides which side of it the cursor is drawn on: with left
@@ -378,9 +472,29 @@ local function render(completion, context)
 		hl_mode = "combine",
 	})
 
-	ghost = { buf = context.buf, id = id, text = completion, row = context.row, col = context.col }
+	ghost = {
+		buf = context.buf,
+		id = id,
+		text = completion,
+		row = context.row,
+		col = context.col,
+		index = index or 0,
+		total = total or 0,
+	}
+	state.index, state.total = ghost.index, ghost.total
 	announce()
 	return true
+end
+
+--- Draw the current suggestion of `context`, whatever it is.
+---@param context Crust.QuickComplete.Context
+---@return boolean shown
+local function render_current(context)
+	local completion, index, total = M.completion(context)
+	if completion == nil then
+		return false
+	end
+	return render(completion, context, index, total)
 end
 
 --- Requests ---------------------------------------------------------------
@@ -408,6 +522,18 @@ function M.on_event(event)
 		client = nil
 		inflight = nil
 		set_state("error", "pi exited (" .. tostring(event.code) .. ")")
+		return
+	end
+
+	if event.type == "_stderr" then
+		-- A provider failure (a rate limit, most often) never answers, so
+		-- the request is dropped instead of being waited out.
+		local Errors = require("crust.pi.errors")
+		local text = tostring(event.message)
+		if Errors.is_error(text) then
+			inflight = nil
+			set_state("error", Errors.pretty(text))
+		end
 		return
 	end
 
@@ -441,7 +567,9 @@ function M.finish(request)
 	inflight = nil
 
 	local completion = M.sanitize(request.text, request.context)
-	remember(request.context, completion)
+	if completion ~= "" then
+		remember(request.context, completion)
+	end
 	set_state("idle")
 
 	if not request.show then
@@ -451,26 +579,37 @@ function M.finish(request)
 	-- The cursor may have moved while the model was thinking; the answer is
 	-- cached either way, but it is only drawn where it belongs.
 	local current = M.context()
-	if current and current.key == request.key then
-		render(completion, current)
+	if current and current.key == request.context.key then
+		render_current(current)
 	end
+end
+
+--- What a generation is in flight for: the context, and how many answers it
+--- already had. Asking for another one is a different request.
+---@param context Crust.QuickComplete.Context
+---@return string
+local function request_key(context)
+	return context.key .. "\1" .. offered_count(context)
 end
 
 --- Ask the model to complete `context`.
 ---@param context Crust.QuickComplete.Context
 ---@param show? boolean draw the answer when it arrives
+---@param more? boolean ask for another answer even when one is known
 ---@return boolean started false when the answer is already known
-function M.request(context, show)
-	local known = M.completion(context)
-	if known ~= nil then
-		if show then
-			render(known, context)
+function M.request(context, show, more)
+	if not more then
+		local known, index, total = M.completion(context)
+		if known ~= nil then
+			if show then
+				render(known, context, index, total)
+			end
+			return false
 		end
-		return false
 	end
 
 	if inflight then
-		if inflight.key == context.key then
+		if inflight.key == request_key(context) then
 			-- Already on its way; just remember that it is wanted on screen.
 			inflight.show = inflight.show or show == true
 			return false
@@ -485,7 +624,7 @@ function M.request(context, show)
 		return false
 	end
 
-	inflight = { key = context.key, context = context, text = "", show = show == true, pi = pi }
+	inflight = { key = request_key(context), context = context, text = "", show = show == true, pi = pi }
 	set_state("running")
 
 	local _, send_err = pi:send(Command.prompt(M.prompt(context)))
@@ -523,11 +662,114 @@ end
 
 --- API ---------------------------------------------------------------------
 
+--- Throw away the suggestion on screen and ask for a different one.
+---
+--- Unlike cycling, this one is destructive: the answer is dropped from the
+--- ring and listed as refused in every later request, so the model never
+--- offers it again. What is left of the ring is shown, or a new answer is
+--- asked for when nothing is.
+---@param context? Crust.QuickComplete.Context defaults to the current one
+---@return boolean asked false when there was nothing to refuse
+function M.refuse_completion(context)
+	local text = ghost and ghost.text
+	if not text then
+		return false
+	end
+
+	context = context or M.context()
+	if not context then
+		return false
+	end
+
+	local entry = entry_of(context)
+	if entry then
+		for index, known in ipairs(entry.list) do
+			if known == text then
+				table.remove(entry.list, index)
+				break
+			end
+		end
+		if not vim.tbl_contains(entry.refused, text) then
+			entry.refused[#entry.refused + 1] = text
+		end
+		entry.index = math.min(entry.index, #entry.list)
+	end
+
+	M.hide_completion()
+
+	if entry and entry.index > 0 then
+		render_current(context)
+		return true
+	end
+
+	M.request(context, true, true)
+	return true
+end
+
+--- Ask the model for one more suggestion, keeping the ones already given.
+---
+--- Stops at `max_suggestions`: past that the model is out of ideas and the
+--- list of what not to repeat only costs prefill.
+---@param context? Crust.QuickComplete.Context defaults to the current one
+---@return boolean asked
+function M.more_completion(context)
+	context = context or M.context()
+	if not context then
+		return false
+	end
+
+	local max = require("crust.config").get().quickcomplete.max_suggestions
+	if offered_count(context) >= max then
+		vim.notify("crust quickcomplete: no other suggestion", vim.log.levels.WARN)
+		return false
+	end
+
+	return M.request(context, true, true)
+end
+
+--- Move through the suggestions of the current context, wrapping around.
+---@param step integer 1 for the next one, -1 for the previous
+---@param opts? { buf?: integer, row?: integer, col?: integer }
+---@return boolean shown false when there is nothing to cycle
+local function cycle(step, opts)
+	if not M.insert_mode() then
+		return false
+	end
+
+	local context = M.context(opts)
+	local entry = context and entry_of(context)
+	if not context or not entry or #entry.list < 2 then
+		return false
+	end
+
+	entry.index = (entry.index - 1 + step) % #entry.list + 1
+	return render_current(context)
+end
+
+--- Show the next suggestion of the current context, wrapping around.
+---@param opts? { buf?: integer, row?: integer, col?: integer }
+---@return boolean shown
+function M.next_completion(opts)
+	return cycle(1, opts)
+end
+
+--- Show the previous suggestion of the current context, wrapping around.
+---@param opts? { buf?: integer, row?: integer, col?: integer }
+---@return boolean shown
+function M.prev_completion(opts)
+	return cycle(-1, opts)
+end
+
 --- Show the completion for the current line.
 ---
 --- A cached answer is drawn at once — which is the common case, the
 --- background generation has usually run already. Otherwise the request is
 --- started now and drawn when it lands, provided the cursor has not moved.
+---
+--- Asking again for what is already drawn adds a suggestion to the ring
+--- instead of replacing it: nothing is thrown away unless
+--- `refuse_completion` is called. Cycle through the ring with
+--- `next_completion` / `prev_completion`.
 ---@param opts? { buf?: integer, row?: integer, col?: integer }
 ---@return boolean shown true when ghost text is on screen now
 function M.show_completion(opts)
@@ -540,9 +782,13 @@ function M.show_completion(opts)
 		return false
 	end
 
-	local completion = M.completion(context)
-	if completion ~= nil then
-		return render(completion, context)
+	-- Asked again for what is already drawn: one answer was not enough.
+	if ghost and ghost.buf == context.buf and ghost.row == context.row and ghost.col == context.col then
+		return M.more_completion(context)
+	end
+
+	if render_current(context) then
+		return true
 	end
 
 	M.request(context, true)

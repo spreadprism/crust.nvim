@@ -158,8 +158,10 @@ function M.on_event(event)
 		end
 	elseif event.type == "_stderr" then
 		-- Only a hard failure ends the run; pi writes warnings here too.
-		if tostring(event.message):match("[Ee]rror") then
-			settle(false, tostring(event.message))
+		local Errors = require("crust.pi.errors")
+		local text = tostring(event.message)
+		if Errors.is_error(text) then
+			settle(false, Errors.pretty(text))
 		end
 	elseif event.type == "_process_exit" then
 		client = nil
