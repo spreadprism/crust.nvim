@@ -27,6 +27,59 @@ function M.relative(path)
 	return vim.fn.fnamemodify(vim.fs.normalize(path), ":~:.")
 end
 
+--- Filetypes of the chat panels: none of them is a file to talk about.
+---@type table<string, true>
+local PANELS = {
+	[require("crust.filetypes").input] = true,
+	[require("crust.filetypes").output] = true,
+	-- Spelled out instead of required, so this module never pulls in the ui.
+	["crust_status"] = true,
+}
+
+--- True for a buffer belonging to the chat itself.
+---@param buf integer
+---@return boolean
+local function is_panel(buf)
+	if not vim.api.nvim_buf_is_valid(buf) then
+		return true
+	end
+	if PANELS[vim.bo[buf].filetype] then
+		return true
+	end
+	return vim.api.nvim_buf_get_name(buf):match("^crust://") ~= nil
+end
+
+--- The buffer the user last worked in, chat panels aside.
+---
+--- `lastused` only has a second of resolution, so a buffer that is on screen
+--- wins a tie: after a `<C-w>` into the chat, the file still visible next to
+--- it is the one the mapping means.
+---@return integer? buf nil when nothing but the chat is loaded
+function M.last_buf()
+	local visible = {}
+	for _, win in ipairs(vim.api.nvim_list_wins()) do
+		visible[vim.api.nvim_win_get_buf(win)] = true
+	end
+
+	local best, best_rank = nil, nil
+	for _, info in ipairs(vim.fn.getbufinfo({ buflisted = 1 })) do
+		local buf = info.bufnr
+		if info.name ~= "" and not is_panel(buf) then
+			local rank = { info.lastused or 0, visible[buf] and 1 or 0, buf }
+			if
+				not best_rank
+				or rank[1] > best_rank[1]
+				or (rank[1] == best_rank[1] and rank[2] > best_rank[2])
+				or (rank[1] == best_rank[1] and rank[2] == best_rank[2] and rank[3] > best_rank[3])
+			then
+				best, best_rank = buf, rank
+			end
+		end
+	end
+
+	return best
+end
+
 ---@return boolean
 local function in_visual_mode()
 	return vim.fn.mode():match("^[vV\22]") ~= nil

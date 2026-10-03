@@ -217,6 +217,105 @@ describe("send", function()
 		end)
 	end)
 
+	describe("last_buf", function()
+		local extra = {}
+
+		---@param name string
+		---@param filetype? string
+		---@return integer
+		local function listed(name, filetype)
+			local created = vim.api.nvim_create_buf(true, true)
+			vim.api.nvim_buf_set_name(created, name)
+			if filetype then
+				vim.bo[created].filetype = filetype
+			end
+			extra[#extra + 1] = created
+			return created
+		end
+
+		after_each(function()
+			for _, created in ipairs(extra) do
+				if vim.api.nvim_buf_is_valid(created) then
+					vim.api.nvim_buf_delete(created, { force = true })
+				end
+			end
+			extra = {}
+		end)
+
+		it("answers with the buffer that was used last", function()
+			local first = listed(dir .. "/first.lua")
+			local second = listed(dir .. "/second.lua")
+
+			vim.api.nvim_win_set_buf(0, first)
+			vim.api.nvim_win_set_buf(0, second)
+			assert.are.equal(second, Send.last_buf())
+		end)
+
+		it("skips the chat panels", function()
+			local file = listed(dir .. "/file.lua")
+			local input = listed(dir .. "/prompt", require("crust.filetypes").input)
+			-- The panel's own buffer is already named `crust://chat`, so the
+			-- stand-in only shares the scheme, which is what is matched on.
+			local output = listed("crust://chat-spec")
+
+			vim.api.nvim_win_set_buf(0, file)
+			vim.api.nvim_win_set_buf(0, input)
+			vim.api.nvim_win_set_buf(0, output)
+			assert.are.equal(file, Send.last_buf())
+		end)
+
+		it("ignores unnamed buffers", function()
+			local named = listed(dir .. "/named.lua")
+			local scratch = vim.api.nvim_create_buf(true, true)
+			extra[#extra + 1] = scratch
+
+			vim.api.nvim_win_set_buf(0, named)
+			vim.api.nvim_win_set_buf(0, scratch)
+			assert.are.equal(named, Send.last_buf())
+		end)
+	end)
+
+	describe("send_last_buffer", function()
+		local crust = require("crust")
+		local sent
+
+		before_each(function()
+			sent = nil
+			crust.send = function(opts)
+				sent = opts
+				return true
+			end
+		end)
+
+		after_each(function()
+			package.loaded["crust"] = nil
+		end)
+
+		it("sends the last buffer outside the chat", function()
+			local last = Send.last_buf
+			Send.last_buf = function()
+				return 42
+			end
+
+			assert.is_true(crust.send_last_buffer())
+			assert.are.same({ buf = 42, visual = false }, sent)
+
+			Send.last_buf = last
+		end)
+
+		it("does nothing when only the chat is loaded", function()
+			local last = Send.last_buf
+			Send.last_buf = function()
+				return nil
+			end
+
+			assert.is_false(crust.send_last_buffer())
+			assert.is_nil(sent)
+
+			Send.last_buf = last
+		end)
+	end)
+
 	describe("input:focus", function()
 		---@type Crust.Chat.Input
 		local input

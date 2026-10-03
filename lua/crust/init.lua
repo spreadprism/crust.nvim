@@ -116,6 +116,25 @@ function M.send(opts)
 	return true
 end
 
+--- Put a reference to the last buffer that is not part of the chat into the
+--- prompt, whatever has focus right now.
+---
+--- `send` describes the current buffer, so from inside the panel it has
+--- nothing to say. This one looks past the panels and mentions the file the
+--- user was last in, which is what "add what I was reading" means once the
+--- cursor already sits in the prompt.
+---@return boolean sent false when nothing but the chat is loaded
+function M.send_last_buffer()
+	local buf = require("crust.send").last_buf()
+	if not buf then
+		return false
+	end
+
+	-- A selection belongs to the buffer it was made in, not to this one, so
+	-- the range of `opts` is dropped rather than carried over.
+	return M.send({ buf = buf, visual = false })
+end
+
 --- One key for both halves of the workflow: `open` while the panel is away,
 --- `send` once it is up.
 ---
