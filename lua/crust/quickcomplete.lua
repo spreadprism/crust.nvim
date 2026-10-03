@@ -56,7 +56,6 @@ local SYSTEM_PROMPT = table.concat({
 
 ---@class Crust.QuickComplete.Context
 ---@field buf integer
----@field path string
 ---@field filetype string
 ---@field row integer 0-based cursor row
 ---@field col integer byte column of the cursor
@@ -79,8 +78,10 @@ local client = nil
 ---@type uv.uv_timer_t?
 local timer = nil
 
---- Context -> completion. Capped, oldest dropped first.
----@type table<string, string>
+--- Context -> answer. Capped, oldest dropped first. The window the answer
+--- was given for is kept with it, so an answer can be reused for a context
+--- that only typed into it.
+---@type table<string, { completion: string, prefix: string, suffix: string }>
 local cache = {}
 ---@type string[] insertion order of `cache`
 local order = {}
@@ -118,19 +119,55 @@ end
 
 --- Cache ------------------------------------------------------------------
 
----@param key string
+---@param context Crust.QuickComplete.Context
 ---@param completion string
-local function remember(key, completion)
-	if cache[key] == nil then
-		order[#order + 1] = key
+local function remember(context, completion)
+	if cache[context.key] == nil then
+		order[#order + 1] = context.key
 	end
-	cache[key] = completion
+	cache[context.key] = { completion = completion, prefix = context.prefix, suffix = context.suffix }
 
 	local max = require("crust.config").get().quickcomplete.cache_size
 	while #order > max do
 		local oldest = table.remove(order, 1)
 		cache[oldest] = nil
 	end
+end
+
+--- The answer for `context`, if one is known.
+---
+--- An exact hit is the common case. Failing that, an earlier answer for the
+--- same line is reused when the user simply typed the start of it: asked
+--- after `local x = `, answered `a + b`, then typing `a ` leaves `+ b` to
+--- suggest. That is what keeps a suggestion on screen while you type it,
+--- instead of one request per keystroke.
+---@param context Crust.QuickComplete.Context
+---@return string? completion
+function M.completion(context)
+	local exact = cache[context.key]
+	if exact then
+		return exact.completion
+	end
+
+	for index = #order, 1, -1 do
+		local entry = cache[order[index]]
+		if
+			entry
+			and entry.completion ~= ""
+			-- What follows the cursor has to be untouched: the answer was
+			-- written to fit in front of it.
+			and entry.suffix == context.suffix
+			and #context.prefix > #entry.prefix
+			and context.prefix:sub(1, #entry.prefix) == entry.prefix
+		then
+			local typed = context.prefix:sub(#entry.prefix + 1)
+			if #typed < #entry.completion and entry.completion:sub(1, #typed) == typed then
+				return entry.completion:sub(#typed + 1)
+			end
+		end
+	end
+
+	return nil
 end
 
 function M.clear_cache()
@@ -160,7 +197,15 @@ end
 --- The window around the cursor the model is given.
 ---
 --- Small on purpose: prefill time is what the user feels, and a page in each
---- direction is what a line completion can actually use.
+--- direction is what a line completion can actually use. Less of it comes
+--- after the cursor than before: finishing a line needs what leads up to
+--- it, barely anything of what follows.
+---
+--- Where the window *starts* is snapped to a block of `window_step` lines
+--- instead of following the cursor. Moving down a line then leaves the text
+--- before the cursor byte-identical, which is what both this cache and the
+--- provider's prefix cache key on; a window that slides by one line every
+--- keystroke misses both.
 ---@param opts? { buf?: integer, row?: integer, col?: integer }
 ---@return Crust.QuickComplete.Context?
 function M.context(opts)
@@ -181,12 +226,14 @@ function M.context(opts)
 		return nil
 	end
 
-	local window = require("crust.config").get().quickcomplete.window_lines
+	local cfg = require("crust.config").get().quickcomplete
 	local line = vim.api.nvim_buf_get_lines(buf, row, row + 1, false)[1] or ""
 	col = math.min(col, #line)
 
-	local first = math.max(row - window, 0)
-	local last = math.min(row + window + 1, count)
+	local step = math.max(cfg.window_step, 1)
+	local anchor = math.floor(row / step) * step
+	local first = math.max(anchor - cfg.window_lines, 0)
+	local last = math.min(row + cfg.suffix_lines + 1, count)
 	local before_lines = vim.api.nvim_buf_get_lines(buf, first, row, false)
 	local after_lines = vim.api.nvim_buf_get_lines(buf, row + 1, last, false)
 
@@ -196,11 +243,8 @@ function M.context(opts)
 	local suffix = line:sub(col + 1)
 	suffix = suffix .. (#after_lines > 0 and "\n" .. table.concat(after_lines, "\n") or "")
 
-	local path = vim.api.nvim_buf_get_name(buf)
-
 	return {
 		buf = buf,
-		path = path ~= "" and vim.fs.normalize(path) or "[scratch]",
 		filetype = vim.bo[buf].filetype,
 		row = row,
 		col = col,
@@ -214,11 +258,13 @@ function M.context(opts)
 	}
 end
 
+--- The request: the language, the split, nothing else. The path told the
+--- model nothing a line completion can use, and every token of scaffolding
+--- is prefill the user waits for.
 ---@param context Crust.QuickComplete.Context
 ---@return string
 function M.prompt(context)
 	return table.concat({
-		"<|file|> " .. context.path,
 		"<|language|> " .. (context.filetype ~= "" and context.filetype or "text"),
 		"<|prefix|>",
 		context.prefix,
@@ -226,6 +272,33 @@ function M.prompt(context)
 		context.suffix,
 		"<|complete|>",
 	}, "\n")
+end
+
+--- Drop the part of the answer that is already on the line.
+---
+--- Models re-state what they are continuing: asked to finish `  echo `, a
+--- model answers `echo foobar` as often as `foobar`. Whatever tail of the
+--- text before the cursor the answer starts with is cut off, longest match
+--- first, so the insert never duplicates it.
+---
+--- A single-character overlap is only cut when it is whitespace: one letter
+--- in common is a coincidence, one space is the indent.
+---@param line string
+---@param before string
+---@return string
+local function strip_overlap(line, before)
+	if before == "" or line == "" then
+		return line
+	end
+
+	for length = math.min(#before, #line), 1, -1 do
+		local tail = before:sub(#before - length + 1)
+		if tail == line:sub(1, length) and (length > 1 or tail:match("^%s$")) then
+			return line:sub(length + 1)
+		end
+	end
+
+	return line
 end
 
 --- An answer is one line of raw text; models still fence it now and then.
@@ -245,15 +318,19 @@ function M.sanitize(text, context)
 	end
 
 	-- Repeating the line it was asked to continue is the classic failure.
-	local before = context.before
-	if before ~= "" and line:sub(1, #before) == before then
-		line = line:sub(#before + 1)
-	end
+	line = strip_overlap(line, context.before)
 
 	return (line:gsub("%s+$", ""))
 end
 
 --- Ghost text -------------------------------------------------------------
+
+--- Ghost text is a thing you type into, so it only belongs in insert mode.
+--- A function rather than an inline check, so specs can stand in for it.
+---@return boolean
+function M.insert_mode()
+	return vim.api.nvim_get_mode().mode:sub(1, 1) == "i"
+end
 
 ---@return boolean
 function M.visible()
@@ -284,16 +361,20 @@ end
 ---@return boolean shown false for an empty completion
 local function render(completion, context)
 	M.hide_completion()
-	if completion == "" then
+	if completion == "" or not M.insert_mode() then
 		return false
 	end
 
 	local id = vim.api.nvim_buf_set_extmark(context.buf, ns, context.row, context.col, {
 		virt_text = { { completion, Highlights.GHOST_TEXT } },
 		virt_text_pos = "inline",
-		-- The text is typed right where this sits, so it has to stay left of
-		-- what the user writes instead of being pushed along by it.
-		right_gravity = false,
+		-- Inline virtual text sits at the cursor's own byte position, and the
+		-- gravity decides which side of it the cursor is drawn on: with left
+		-- gravity the mark counts as being before the cursor, so the cursor
+		-- jumps to the far end of the suggestion the moment it appears. Right
+		-- gravity puts the text after the cursor, where it belongs. Nothing
+		-- is ever typed into it — the next keystroke hides it.
+		right_gravity = true,
 		hl_mode = "combine",
 	})
 
@@ -360,7 +441,7 @@ function M.finish(request)
 	inflight = nil
 
 	local completion = M.sanitize(request.text, request.context)
-	remember(request.key, completion)
+	remember(request.context, completion)
 	set_state("idle")
 
 	if not request.show then
@@ -380,9 +461,10 @@ end
 ---@param show? boolean draw the answer when it arrives
 ---@return boolean started false when the answer is already known
 function M.request(context, show)
-	if cache[context.key] ~= nil then
+	local known = M.completion(context)
+	if known ~= nil then
 		if show then
-			render(cache[context.key], context)
+			render(known, context)
 		end
 		return false
 	end
@@ -449,12 +531,16 @@ end
 ---@param opts? { buf?: integer, row?: integer, col?: integer }
 ---@return boolean shown true when ghost text is on screen now
 function M.show_completion(opts)
+	if not M.insert_mode() then
+		return false
+	end
+
 	local context = M.context(opts)
 	if not context then
 		return false
 	end
 
-	local completion = cache[context.key]
+	local completion = M.completion(context)
 	if completion ~= nil then
 		return render(completion, context)
 	end
@@ -463,7 +549,36 @@ function M.show_completion(opts)
 	return false
 end
 
+--- Write the accepted completion into the buffer.
+---@param buf integer
+---@param row integer
+---@param col integer
+---@param text string
+local function insert(buf, row, col, text)
+	if not vim.api.nvim_buf_is_valid(buf) then
+		return
+	end
+
+	local win = vim.api.nvim_get_current_win()
+	local showing = vim.api.nvim_win_get_buf(win) == buf
+	local cursor = showing and vim.api.nvim_win_get_cursor(win) or nil
+
+	vim.api.nvim_buf_set_text(buf, row, col, row, col, { text })
+
+	-- Text inserted at the cursor pushes it along, the way typing does. The
+	-- completion lands *after* the cursor, exactly where the ghost text was
+	-- drawn, so the cursor is put back where it was.
+	if cursor then
+		pcall(vim.api.nvim_win_set_cursor, win, cursor)
+	end
+end
+
 --- Take the completion on screen and insert it at the cursor.
+---
+--- Completion plugins run their mappings under `textlock` (blink.cmp does),
+--- where touching the buffer raises E565. The write is tried here, where it
+--- lands before the next keystroke, and deferred to the main loop when the
+--- caller holds the lock.
 ---@return boolean accepted false when nothing was shown
 function M.accept_completion()
 	if not ghost then
@@ -477,13 +592,12 @@ function M.accept_completion()
 		return false
 	end
 
-	vim.api.nvim_buf_set_text(buf, row, col, row, col, { text })
-
-	-- Leave the cursor where the typing continues: behind what was inserted.
-	local win = vim.api.nvim_get_current_win()
-	if vim.api.nvim_win_get_buf(win) == buf then
-		pcall(vim.api.nvim_win_set_cursor, win, { row + 1, col + #text })
+	if not pcall(insert, buf, row, col, text) then
+		vim.schedule(function()
+			pcall(insert, buf, row, col, text)
+		end)
 	end
+
 	return true
 end
 
@@ -530,13 +644,18 @@ function M.attach()
 		end,
 	})
 
-	vim.api.nvim_create_autocmd({ "InsertLeave", "BufLeave" }, {
-		group = group,
-		callback = function()
-			M.hide_completion()
-			M.cancel()
-		end,
-	})
+	-- Anything that moves the cursor off the line, leaves insert mode or
+	-- changes the buffer from somewhere else takes the suggestion with it.
+	vim.api.nvim_create_autocmd(
+		{ "InsertLeave", "InsertLeavePre", "BufLeave", "WinLeave", "CursorMoved", "TextChanged", "CompleteChanged" },
+		{
+			group = group,
+			callback = function()
+				M.hide_completion()
+				M.cancel()
+			end,
+		}
+	)
 end
 
 --- Start the process and the autocmds. Called by `crust.setup`.

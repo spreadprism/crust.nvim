@@ -44,7 +44,9 @@ local M = {}
 ---@field model string model of that process, the smallest one that can code
 ---@field auto boolean keep generating in the background while you type
 ---@field debounce_ms integer quiet period before a generation is fired
----@field window_lines integer lines of context kept on each side of the cursor
+---@field window_lines integer lines of context kept before the cursor
+---@field suffix_lines integer lines kept after it, fewer: a line needs what leads up to it
+---@field window_step integer the window start is snapped to this many lines, so typing does not move it
 ---@field cache_size integer completions remembered, keyed by their context
 
 ---@class Crust.Config.Thinking
@@ -131,14 +133,16 @@ M.defaults = {
 	},
 	-- Completion is answered while you type, so everything here is a latency
 	-- or a cost knob: the smallest model, a short window, one call per pause.
-	-- Off by default: unlike the chat and quickprompt, which only cost
-	-- something when asked, this one bills a model for typing.
+	-- The process is up, but it only works when asked: `auto` bills a model
+	-- for typing, which is a choice, not a default.
 	quickcomplete = {
-		enabled = false,
+		enabled = true,
 		model = "anthropic/claude-haiku-4-5",
-		auto = true,
+		auto = false,
 		debounce_ms = 250,
 		window_lines = 40,
+		suffix_lines = 15,
+		window_step = 20,
 		cache_size = 64,
 	},
 	status_text = "",
