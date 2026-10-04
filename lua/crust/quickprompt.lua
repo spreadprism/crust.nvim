@@ -194,7 +194,7 @@ function M.client()
 			"--tools",
 			"edit,read",
 			"--thinking",
-			"minimal",
+			"off",
 		},
 		prompt = { system_prompt = SYSTEM_PROMPT, include_defaults = false },
 		context = { enabled = false },
