@@ -50,6 +50,7 @@ local RIGHT_MARGIN = 1
 local MIN_GAP = 2
 
 --- "3.8k", "7.2M": a token count nobody wants to read digit by digit.
+--- Exposed as `InputBar.tokens`, the chat prints counts of its own.
 ---@param count integer
 ---@return string
 local function tokens(count)
@@ -64,6 +65,8 @@ local function tokens(count)
 	end
 	return string.format("%dM", math.floor(count / 1000000 + 0.5))
 end
+
+InputBar.tokens = tokens
 
 --- Pick the group a threshold pair asks for, nil for the plain one.
 ---@param value number
@@ -279,6 +282,14 @@ function InputBar:add_usage(usage)
 		+ (usage.cacheRead or 0)
 		+ (usage.cacheWrite or 0)
 
+	self:render()
+end
+
+--- Drop the context estimate without touching the session totals. A
+--- compaction invalidates it: the figure belongs to the message before the
+--- summary, and the next one reports what is really left.
+function InputBar:clear_context()
+	self._state.context_tokens = nil
 	self:render()
 end
 

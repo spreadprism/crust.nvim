@@ -34,6 +34,11 @@ local subcommands = {
 	send = function(_, opts)
 		require("crust").send(opts.range > 0 and { first = opts.line1, last = opts.line2 } or { visual = false })
 	end,
+	-- `:Crust compact keep the file layout` passes the rest as instructions.
+	compact = function(args)
+		local instructions = table.concat(args, " ")
+		require("crust").compact(instructions ~= "" and instructions or nil)
+	end,
 	rename = function(args)
 		local name = table.concat(args, " ")
 		require("crust").rename_session(name ~= "" and name or nil)

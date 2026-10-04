@@ -78,6 +78,11 @@ local M = {}
 ---@class Crust.Config.Expansion
 ---@field enabled boolean|fun(): boolean rewrite prompts for the model, e.g. `@path` into the file content
 
+---@class Crust.Config.Compaction
+---@field auto? boolean let pi shrink the context on its own threshold, nil leaves pi's setting alone
+---@field notify boolean write a notice in the scrollback when a compaction happens
+---@field icon string glyph of that notice
+
 ---@class Crust.Config.Context
 ---@field enabled boolean keep pi's own AGENTS.md and CLAUDE.md discovery
 ---@field files? string|string[]|fun(): string|string[]|nil extra context files, appended after the discovered ones
@@ -102,6 +107,7 @@ local M = {}
 ---@field window Crust.Config.Window chat panel geometry
 ---@field input_bar Crust.Config.InputBar cost and model under the prompt
 ---@field thinking Crust.Config.Thinking the model's reasoning text
+---@field compaction Crust.Config.Compaction shrinking the context when it fills up
 ---@field quickprompt Crust.Config.QuickPrompt inline edits, outside the chat
 ---@field quickcomplete Crust.Config.QuickComplete ghost-text completion of the current line
 ---@field raw_tool_blocks boolean keep tool blocks out of the markdown tree
@@ -124,6 +130,14 @@ M.defaults = {
 	spinner = "robot",
 	thinking = {
 		enabled = true,
+	},
+	-- pi decides when the context is too full and summarizes it itself; crust
+	-- only flips the switch and says so in the scrollback, because a silent
+	-- compaction changes what the model remembers.
+	compaction = {
+		auto = true,
+		notify = true,
+		icon = "",
 	},
 	-- One instruction, one edit: the cheapest model that can hold a file in
 	-- its head is the right one here.

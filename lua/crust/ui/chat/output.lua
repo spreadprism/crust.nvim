@@ -537,6 +537,25 @@ function Output:error(message)
 	self:append("\n**crust: " .. message .. "**\n")
 end
 
+--- Write a line of our own in the scrollback: not the agent talking, but
+--- something that happened to the conversation, e.g. a compaction.
+---
+--- Highlighted as one range, so markdown never styles it and the glyph keeps
+--- its colour.
+---@param text string single line, newlines would leave the mark behind
+---@param group? string highlight group, defaults to CrustNotice
+function Output:notice(text, group)
+	if not vim.api.nvim_buf_is_valid(self._buf) or text == "" then
+		return
+	end
+
+	local has_content = self:_trim_trailing_blanks()
+	self:append((has_content and "\n\n" or "") .. text .. "\n")
+
+	local row = vim.api.nvim_buf_line_count(self._buf) - 2
+	self:_highlight(row, 0, #text, group or Highlights.NOTICE)
+end
+
 --- Everything the panel holds, which is the whole conversation.
 ---@return string[]
 function Output:lines()

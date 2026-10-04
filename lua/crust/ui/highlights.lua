@@ -26,6 +26,7 @@ M.WINBAR = "CrustWinbar"
 M.WINBAR_TITLE = "CrustWinbarTitle"
 M.MENTION = "CrustMention"
 M.THINKING = "CrustThinking"
+M.NOTICE = "CrustNotice"
 M.GHOST_TEXT = "CrustGhostText"
 M.GHOST_COUNT = "CrustGhostCount"
 M.INPUT_BAR = "CrustInputBar"
@@ -55,6 +56,7 @@ M.groups = {
 	[M.STATUS_ICON] = { link = "Keyword" },
 	[M.STATUS_TIME] = { link = "Comment" },
 	[M.STATUS_HINT] = { link = "WarningMsg" },
+	[M.NOTICE] = { link = "MoreMsg" },
 	[M.TOOL_PREFIX] = { link = "Comment" },
 	-- Code-block shading. RenderMarkdownCode comes from render-markdown.nvim;
 	-- CursorLine is the fallback when that plugin is absent.

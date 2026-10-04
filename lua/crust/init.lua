@@ -250,6 +250,18 @@ function M.model(query, callback)
 	current:model(query, callback)
 end
 
+--- Summarize the conversation of the live chat, freeing context.
+---
+--- pi compacts on its own once the context fills up (see the `compaction`
+--- config); this asks for it now, e.g. before a long task.
+---@param instructions? string what the summary should keep
+---@return boolean sent
+function M.compact(instructions)
+	local current = M.chat()
+	current:open()
+	return current:compact(instructions)
+end
+
 --- Rename the live session, prompting when `name` is omitted.
 ---@param name? string
 function M.rename_session(name)

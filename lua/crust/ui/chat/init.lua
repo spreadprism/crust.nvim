@@ -8,6 +8,7 @@
 ---@field private _status Crust.Chat.Status
 ---@field private _bar Crust.Chat.InputBar
 ---@field private _streaming boolean
+---@field private _compacting boolean pi is summarizing the context right now
 ---@field private _cancelling boolean an abort was sent and pi has not settled yet
 ---@field private _cancel_timer uv.uv_timer_t? grace period before the hard way out
 ---@field private _augroup integer?
@@ -57,6 +58,7 @@ function Chat.new(opts)
 	self._id = next_id
 	self._closing = false
 	self._streaming = false
+	self._compacting = false
 	self._cancelling = false
 	self._session = {}
 	self._resumed = false
@@ -303,12 +305,8 @@ end
 ---@private
 ---@param text string
 function Chat:_send(text)
-	if not self._pi:is_running() then
-		local ok, err = self._pi:connect()
-		if not ok then
-			self._output:error(tostring(err))
-			return
-		end
+	if not self:_ensure_running() then
+		return
 	end
 
 	self._input:clear()
@@ -435,6 +433,7 @@ function Chat:_settle()
 	self:_stop_cancel_timer()
 	self._cancelling = false
 	self._streaming = false
+	self._compacting = false
 	self._status:clear()
 	-- A call pi never reported the end of died with the turn, so it failed.
 	self._tools:settle(self._output, "error")
@@ -477,8 +476,54 @@ function Chat:_ensure_running()
 	local ok, err = self._pi:connect()
 	if not ok then
 		self._output:error(tostring(err))
+		return false
 	end
-	return ok
+
+	self:_apply_auto_compaction()
+	return true
+end
+
+--- Hand pi the auto-compaction setting of the config. `nil` leaves pi's own
+--- setting alone, which is what a user who never touched the option wants.
+---@private
+function Chat:_apply_auto_compaction()
+	local auto = require("crust.config").get().compaction.auto
+	if type(auto) ~= "boolean" then
+		return
+	end
+
+	self._pi:send(Command.set_auto_compaction(auto), function(event)
+		if event.success == false then
+			self._output:error(event.error or "set_auto_compaction failed")
+		end
+	end)
+end
+
+--- Summarize the conversation so far, freeing context. pi answers with the
+--- `compaction_*` events the panel draws.
+---@param instructions? string what the summary should keep, pi's default without one
+---@return boolean sent
+function Chat:compact(instructions)
+	if not self:_ensure_running() then
+		return false
+	end
+
+	if self._compacting then
+		self._output:error("a compaction is already running")
+		return false
+	end
+
+	local _, err = self._pi:send(Command.compact(instructions), function(event)
+		if event.success == false then
+			self._output:error(event.error or "compaction failed")
+		end
+	end)
+	if err then
+		self._output:error(err)
+		return false
+	end
+
+	return true
 end
 
 --- Refresh the cached session id, name and file.
@@ -867,6 +912,57 @@ function Chat:rename(name, callback)
 	end
 end
 
+--- pi started summarizing the conversation, by itself or because we asked.
+--- The context estimate of the bar belongs to the conversation being folded
+--- away, so it goes with it.
+---@private
+---@param event Crust.Pi.Event
+function Chat:_on_compaction_start(event)
+	self._compacting = true
+	self._output:end_thinking()
+	self._bar:clear_context()
+	self._status:set("compacting (" .. (event.reason or "manual") .. ")")
+end
+
+--- The summary is in. What the conversation now remembers changed, so the
+--- panel says so instead of letting the scrollback lie about it.
+---@private
+---@param event Crust.Pi.Event
+function Chat:_on_compaction_end(event)
+	self._compacting = false
+
+	-- The turn that triggered the compaction carries on, and its status line
+	-- was taken over above.
+	if self._streaming then
+		self._status:set(require("crust.config").get().status_text)
+	else
+		self._status:clear()
+	end
+
+	if event.aborted or event.errorMessage then
+		self._output:error("compaction failed: " .. (event.errorMessage or "aborted"))
+		return
+	end
+
+	local cfg = require("crust.config").get().compaction
+	if not cfg.notify then
+		return
+	end
+
+	local result = event.result --[[@as Crust.Pi.CompactionResult?]]
+	local text = "context compacted"
+	if type(result) == "table" and result.tokensBefore and result.estimatedTokensAfter then
+		text = string.format(
+			"context compacted: %s → ~%s tokens",
+			InputBar.tokens(result.tokensBefore),
+			InputBar.tokens(result.estimatedTokensAfter)
+		)
+	end
+
+	local icon = cfg.icon ~= "" and (cfg.icon .. " ") or ""
+	self._output:notice(icon .. text)
+end
+
 ---@private
 ---@param event Crust.Pi.Event
 function Chat:_on_event(event)
@@ -909,6 +1005,10 @@ function Chat:_on_event(event)
 				self._output:append_thinking(ev.delta)
 			end
 		end
+	elseif event.type == "compaction_start" then
+		self:_on_compaction_start(event)
+	elseif event.type == "compaction_end" then
+		self:_on_compaction_end(event)
 	elseif Tools.handles(event.type) then
 		self._output:end_thinking()
 		self._tools:render(self._output, event)
