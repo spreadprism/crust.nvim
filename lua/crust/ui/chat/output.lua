@@ -212,6 +212,9 @@ function Output:append(text)
 		return
 	end
 
+	-- Included regions end at the line count of the last refresh: text
+	-- streamed past it would stay outside the markdown tree.
+	self:_refresh_regions()
 	self:follow()
 	self:_render_markdown()
 end
