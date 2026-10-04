@@ -181,8 +181,21 @@ function M.client()
 		model = cfg.model,
 		-- Nothing of the chat's world applies here: no stored session to
 		-- grow, no project context files, no neovim extension. The prompt
-		-- carries everything the model is allowed to know.
-		args = { "--no-session" },
+		-- carries everything the model is allowed to know, and `edit` is
+		-- the only thing it is allowed to do.
+		args = {
+			"--no-session",
+			"--no-extensions",
+			"--no-skills",
+			"--no-prompt-templates",
+			"--no-themes",
+			"--no-approve",
+			"--offline",
+			"--tools",
+			"edit,read",
+			"--thinking",
+			"minimal",
+		},
 		prompt = { system_prompt = SYSTEM_PROMPT, include_defaults = false },
 		context = { enabled = false },
 		extension = { enabled = false },

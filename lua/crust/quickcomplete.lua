@@ -861,7 +861,18 @@ function M.client()
 		-- Nothing but the model: no session to grow, no skills to load, no
 		-- context files to read, no tools to offer. Every one of those is
 		-- prefill, and prefill is the latency the user sees.
-		args = { "--no-session", "--no-skills", "--no-context-files", "--no-tools" },
+		args = {
+			"--no-session",
+			"--no-skills",
+			"--no-tools",
+			"--no-extensions",
+			"--no-prompt-templates",
+			"--no-themes",
+			"--no-approve",
+			"--offline",
+			"--thinking",
+			"off",
+		},
 		prompt = { system_prompt = SYSTEM_PROMPT, include_defaults = false },
 		context = { enabled = false },
 		extension = { enabled = false },
