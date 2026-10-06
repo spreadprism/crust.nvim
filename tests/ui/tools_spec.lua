@@ -166,13 +166,15 @@ describe("ui.chat.tools", function()
 			}, segments(display))
 		end)
 
+		-- A spec without `title_lang`, so the title group does not depend on
+		-- which treesitter parsers the runner happens to have.
 		it("highlights each body line for multi-line tools", function()
-			local display = Display.new("bash", Tools.spec("bash"), { command = "ls" })
+			local display = Display.new("just", Tools.DEFAULT, { command = "ls" })
 			display:update({ type = "tool_execution_end", result = result("a\nb") })
 
 			assert.are.same({
 				{ Highlights.TOOL_ICON_SUCCESS, icons.success },
-				{ Highlights.TOOL, "bash:" },
+				{ Highlights.TOOL, "just:" },
 				{ Highlights.TOOL_TITLE, "ls" },
 				{ Highlights.TOOL_BODY, "a" },
 				{ Highlights.TOOL_BODY, "b" },
@@ -743,6 +745,51 @@ describe("ui.chat.tools", function()
 					"> " .. icons.error .. " write: " .. PATH,
 					"> EACCES: permission denied",
 				}, display:lines())
+			end)
+		end)
+
+		describe("skill", function()
+			it("shows a SKILL.md read as a skill load", function()
+				local tools = Tools.new()
+				local out = Output.new()
+				tools:render(out, {
+					type = "tool_execution_start",
+					toolCallId = "1",
+					toolName = "read",
+					args = { path = "/home/u/.pi/agent/skills/claude-usage/SKILL.md" },
+				})
+				tools:render(out, {
+					type = "tool_execution_end",
+					toolCallId = "1",
+					toolName = "read",
+					result = result("a\nb\nc"),
+				})
+
+				local display = tools:display("1")
+				assert.are.equal("skill", display.name)
+				assert.are.same({ "> " .. icons.success .. " skill: claude-usage 3 lines loaded" }, display:lines())
+			end)
+
+			it("names a standalone skill file after the file", function()
+				local tools = Tools.new()
+				tools:render(Output.new(), {
+					type = "tool_execution_start",
+					toolCallId = "1",
+					toolName = "read",
+					args = { path = "/home/u/.pi/agent/skills/worklog.md" },
+				})
+				assert.are.equal("worklog", tools:display("1"):title())
+			end)
+
+			it("leaves an ordinary read alone", function()
+				local tools = Tools.new()
+				tools:render(Output.new(), {
+					type = "tool_execution_start",
+					toolCallId = "1",
+					toolName = "read",
+					args = { path = "README.md" },
+				})
+				assert.are.equal("read", tools:display("1").name)
 			end)
 		end)
 

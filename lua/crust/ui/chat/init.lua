@@ -13,6 +13,7 @@
 ---@field private _cancel_timer uv.uv_timer_t? grace period before the hard way out
 ---@field private _augroup integer?
 ---@field private _closing boolean
+---@field private _skill { display: Crust.Chat.Tools.Display, block: Crust.Chat.Output.Block }? last `/skill:` block, in case pi fails to expand it
 ---@field private _session Crust.Chat.Session
 ---@field private _resumed boolean a past session was loaded into this chat
 local Chat = {}
@@ -34,6 +35,7 @@ local Command = require("crust.pi.rpc")
 local Input = require("crust.ui.chat.input")
 local Output = require("crust.ui.chat.output")
 local Tools = require("crust.ui.chat.tools")
+local Display = require("crust.ui.chat.tools.display")
 local Status = require("crust.ui.chat.status")
 local InputBar = require("crust.ui.chat.inputbar")
 local Highlights = require("crust.ui.highlights")
@@ -314,6 +316,7 @@ function Chat:_send(text)
 	-- The scrollback shows what was typed; pi gets the expanded prompt, so a
 	-- `@path` mention stays one blue word here and is a whole file there.
 	self._output:append_message(text .. "\n")
+	self:_skill_block(text)
 	local prompt = require("crust.expansion").expand(text)
 
 	local _, err = self._pi:send(
@@ -327,6 +330,60 @@ function Chat:_send(text)
 	if err then
 		self._output:error(err)
 	end
+end
+
+--- Show a `/skill:name` invocation the way a model-invoked skill load is
+--- shown. Pi expands the command into the prompt itself and reports no tool
+--- call for it, so the panel draws the block on its own.
+---
+--- Only a skill pi knows about gets a block: an unknown name is passed through
+--- as plain text and loads nothing.
+---@private
+---@param text string what was typed
+function Chat:_skill_block(text)
+	local name = text:match("^/skill:([^%s]+)")
+	if not name then
+		return
+	end
+
+	local known = false
+	for _, command in ipairs(require("crust.completion.commands").list()) do
+		if command.source == "skill" and command.name == "skill:" .. name then
+			known = true
+			break
+		end
+	end
+	if not known then
+		return
+	end
+
+	local display = Display.new("skill", Tools.spec("skill"), { name = name })
+	display:set_status("success")
+
+	local render = display:render(self._output:width())
+	local block = self._output:append_block(render.lines, render.highlights, render.line_highlights)
+	self._skill = { display = display, block = block }
+end
+
+--- Pi could not read the skill file it was about to expand. The block was
+--- drawn when the command was sent, so it is rewritten as the failure.
+---@private
+---@param event Crust.Pi.Event
+function Chat:_on_skill_error(event)
+	local skill = self._skill
+	self._skill = nil
+
+	local message = event.error or "failed to load skill"
+	if not skill or not self._output:block_row(skill.block) then
+		self._output:error(message)
+		return
+	end
+
+	skill.display:set_status("error")
+	skill.display.result = { content = { { type = "text", text = message } } }
+
+	local render = skill.display:render(self._output:width())
+	self._output:replace_block(skill.block, render.lines, render.highlights, render.line_highlights)
 end
 
 --- Abort the running turn. Does nothing when the agent is idle.
@@ -460,6 +517,7 @@ function Chat:clear()
 	self._streaming = false
 	self._status:clear()
 	self._tools:reset()
+	self._skill = nil
 	self._output:clear()
 	-- Tokens and cost belong to a conversation, the model does not.
 	self._bar:reset()
@@ -1005,6 +1063,8 @@ function Chat:_on_event(event)
 				self._output:append_thinking(ev.delta)
 			end
 		end
+	elseif event.type == "extension_error" and event.event == "skill_expansion" then
+		self:_on_skill_error(event)
 	elseif event.type == "compaction_start" then
 		self:_on_compaction_start(event)
 	elseif event.type == "compaction_end" then

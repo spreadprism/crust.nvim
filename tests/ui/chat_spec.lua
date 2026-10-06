@@ -463,6 +463,92 @@ describe("ui.chat", function()
 			assert.is_truthy(text:find("**crust: pi process is not running**", 1, true))
 		end)
 
+		describe("skill commands", function()
+			local Commands = require("crust.completion.commands")
+			local list
+
+			before_each(function()
+				list = Commands.list
+				chat._pi = {
+					is_running = function()
+						return true
+					end,
+					send = function()
+						return "id-1"
+					end,
+				}
+			end)
+
+			after_each(function()
+				Commands.list = list
+			end)
+
+			--- Pretend pi reported these skills to `get_commands`.
+			---@param names string[]
+			local function know(names)
+				local commands = {}
+				for _, name in ipairs(names) do
+					commands[#commands + 1] = { name = "skill:" .. name, source = "skill" }
+				end
+				---@diagnostic disable-next-line: duplicate-set-field
+				Commands.list = function()
+					return commands
+				end
+			end
+
+			it("shows a block for a known skill", function()
+				know({ "worklog" })
+				chat:input():set_text("/skill:worklog 2h on PI-1")
+				chat:submit()
+
+				assert.are.same({
+					header(labels.user),
+					"",
+					"/skill:worklog 2h on PI-1",
+					"",
+					"> " .. icons.success .. " skill: worklog",
+					"",
+					"",
+				}, chat:output():lines())
+			end)
+
+			it("rewrites the block when pi fails to read the skill", function()
+				know({ "worklog" })
+				chat:input():set_text("/skill:worklog")
+				chat:submit()
+
+				feed({
+					{
+						type = "extension_error",
+						event = "skill_expansion",
+						extensionPath = "/skills/worklog/SKILL.md",
+						error = "EACCES: permission denied",
+					},
+				})
+
+				local text = table.concat(chat:output():lines(), "\n")
+				assert.is_truthy(text:find("> " .. icons.error .. " skill: worklog", 1, true))
+				assert.is_truthy(text:find("EACCES: permission denied", 1, true))
+			end)
+
+			it("reports a skill failure that has no block of its own", function()
+				feed({
+					{ type = "extension_error", event = "skill_expansion", error = "ENOENT" },
+				})
+
+				local text = table.concat(chat:output():lines(), "\n")
+				assert.is_truthy(text:find("**crust: ENOENT**", 1, true))
+			end)
+
+			it("leaves an unknown skill name as plain text", function()
+				know({ "worklog" })
+				chat:input():set_text("/skill:nope")
+				chat:submit()
+
+				assert.are.same({ header(labels.user), "", "/skill:nope", "" }, chat:output():lines())
+			end)
+		end)
+
 		it("streams follow-up prompts while the agent is running", function()
 			local sent
 			chat._pi = {

@@ -68,7 +68,31 @@ Tools.registry = {
 	read = require("crust.ui.chat.tools.read"),
 	edit = require("crust.ui.chat.tools.edit"),
 	write = require("crust.ui.chat.tools.write"),
+	skill = require("crust.ui.chat.tools.skill"),
 }
+
+--- Pi has no skill event: a skill is loaded by reading its `SKILL.md`, and a
+--- `/skill:name` command is expanded into the prompt before it is sent. So a
+--- read of a skill file is shown as a skill load rather than as a plain read.
+---@param name string tool name reported by pi
+---@param args table?
+---@return boolean
+local function is_skill_load(name, args)
+	if name ~= "read" or type(args) ~= "table" then
+		return false
+	end
+
+	local path = args.path or args.file_path
+	if type(path) ~= "string" then
+		return false
+	end
+
+	path = path:gsub("\\", "/")
+	if path:lower():match("/skill%.md$") then
+		return true
+	end
+	return path:match("/skills/[^/]+%.md$") ~= nil
+end
 
 --- Register or override the spec used for a tool.
 ---@param name string
@@ -125,6 +149,9 @@ function Tools:render(output, event)
 	local display = self._displays[id]
 	if not display then
 		local name = event.toolName or "tool"
+		if is_skill_load(name, event.args) then
+			name = "skill"
+		end
 		display = Display.new(name, Tools.spec(name), event.args)
 		self._displays[id] = display
 	end
