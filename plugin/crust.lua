@@ -26,6 +26,10 @@ local subcommands = {
 	transcript = function()
 		require("crust").transcript()
 	end,
+	-- `:Crust debug pretty` expands the json of each rpc line.
+	debug = function(args)
+		require("crust").debug({ pretty = args[1] == "pretty" or nil })
+	end,
 	last = function()
 		require("crust").session_last()
 	end,

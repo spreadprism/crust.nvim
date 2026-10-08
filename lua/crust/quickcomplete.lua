@@ -848,6 +848,13 @@ end
 
 --- Process ----------------------------------------------------------------
 
+--- The live quickcomplete process, without starting one. For `crust.debug`
+--- and anything else that only wants to look.
+---@return Crust.Pi?
+function M.process()
+	return client
+end
+
 --- The quickcomplete process, started on first use when `setup` did not.
 ---@return Crust.Pi
 function M.client()

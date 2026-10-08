@@ -14,6 +14,10 @@ local M = {}
 ---@field enabled boolean write the raw rpc transcript to disk
 ---@field dir string directory holding `crust-<session>.log` files
 
+---@class Crust.Config.Debug what `crust.debug()` shows, see `crust.debug`
+---@field history integer raw rpc lines kept per process, the oldest are dropped
+---@field pretty boolean expand the json of each line over several rows
+
 ---@class Crust.Config.RenderMarkdown
 ---@field enabled boolean|fun(): boolean push renders to render-markdown.nvim when it is installed
 ---@field debounce_ms integer quiet period before re-rendering while streaming
@@ -101,6 +105,7 @@ local M = {}
 ---@field extension Crust.Config.Extension
 ---@field herdr Crust.Config.Herdr agent state reported to herdr
 ---@field log Crust.Config.Log
+---@field debug Crust.Config.Debug the raw rpc dump
 ---@field render_markdown Crust.Config.RenderMarkdown
 ---@field icons Crust.Config.Icons status icons shown before a tool title
 ---@field labels Crust.Config.Labels message icons, same glyphs as pi.nvim
@@ -208,6 +213,13 @@ M.defaults = {
 	log = {
 		enabled = false,
 		dir = vim.fn.stdpath("state") .. "/crust",
+	},
+	-- The rpc traffic is always recorded in memory, so a failure can be read
+	-- after the fact without reproducing it with the disk log on. Only the
+	-- tail is kept: one turn of a long session is already hundreds of lines.
+	debug = {
+		history = 2000,
+		pretty = false,
 	},
 	prompt = {
 		system_prompt = nil,

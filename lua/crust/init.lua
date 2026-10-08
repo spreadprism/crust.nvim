@@ -17,6 +17,14 @@ function M.chat()
 	return chat
 end
 
+--- The live chat, without building one. `chat()` creates the panels on
+--- first call, which a caller that only wants to look — a statusline, the
+--- debug dump — should not do.
+---@return Crust.Chat?
+function M.current_chat()
+	return chat
+end
+
 ---@param opts? Crust.Chat.OpenOpts
 function M.open(opts)
 	M.chat():open(opts)
@@ -227,6 +235,18 @@ end
 ---@return integer buf
 function M.transcript()
 	return M.chat():transcript()
+end
+
+--- Open the raw rpc of every live pi process in a new tab: what was sent,
+--- what came back, and what pi wrote to stderr, which is where a provider
+--- or auth failure says what it actually was.
+---
+--- Recording is always on, so this works on a failure that already
+--- happened; `config.debug.history` is how far back it goes.
+---@param opts? { pretty?: boolean } `pretty` expands the json over several rows
+---@return integer buf
+function M.debug(opts)
+	return require("crust.debug").open(opts)
 end
 
 --- Start a new session in the current chat, clearing the panel.

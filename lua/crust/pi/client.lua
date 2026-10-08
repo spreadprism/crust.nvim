@@ -9,6 +9,18 @@
 ---@field context? Crust.Config.Context context overrides, defaults to `config.context`
 ---@field extension? Crust.Config.Extension neovim integration overrides, defaults to `config.extension`
 
+---@class Crust.Pi.Trace.Entry one line of raw traffic, as it crossed the pipe
+---@field kind Crust.Pi.Trace.Kind
+---@field text string undecoded payload
+---@field time integer epoch milliseconds
+
+---@alias Crust.Pi.Trace.Kind
+---| "spawn" the command line the process was started with
+---| "sent" an rpc command written to stdin
+---| "received" a line read from stdout, decoded or not
+---| "stderr" a line pi wrote to stderr
+---| "exit" the process died
+
 ---@class Crust.Pi Pi instance process that manages everything
 ---@field opts Crust.Pi.Opts
 ---@field job_id integer?
@@ -16,6 +28,7 @@
 ---@field private _req_id integer
 ---@field private _stdout_buf string
 ---@field private _log Crust.Log?
+---@field private _trace Crust.Pi.Trace.Entry[] ring of raw traffic, for `crust.debug`
 local Pi = {}
 Pi.__index = Pi
 
@@ -45,6 +58,7 @@ function Pi.new(opts)
 	self._pending = {}
 	self._req_id = 0
 	self._stdout_buf = ""
+	self._trace = {}
 
 	local log_opt = self.opts.log
 	if log_opt ~= false and cfg.log.enabled then
@@ -58,6 +72,42 @@ end
 ---@return Crust.Log?
 function Pi:log()
 	return self._log
+end
+
+--- Raw traffic of this process, oldest first.
+---
+--- Always recorded, unlike the on-disk log: a failure worth debugging is
+--- usually noticed after it happened, when turning logging on and
+--- reproducing it is the expensive way to look. The ring is capped by
+--- `config.debug.history`, so an endless session cannot grow it.
+---@return Crust.Pi.Trace.Entry[]
+function Pi:trace()
+	return self._trace
+end
+
+--- Drop the recorded traffic.
+function Pi:clear_trace()
+	self._trace = {}
+end
+
+---@private
+---@param kind Crust.Pi.Trace.Kind
+---@param text string
+function Pi:_record(kind, text)
+	local secs, usecs = vim.uv.gettimeofday()
+	self._trace[#self._trace + 1] = {
+		kind = kind,
+		text = text,
+		time = secs * 1000 + math.floor(usecs / 1000),
+	}
+
+	local limit = require("crust.config").get().debug.history
+	local excess = #self._trace - limit
+	if excess > 0 then
+		-- Keeping the tail: the lines near a failure are the ones that
+		-- explain it.
+		self._trace = vim.list_slice(self._trace, excess + 1)
+	end
 end
 
 ---@private
@@ -98,7 +148,10 @@ function Pi:connect()
 
 	self._stdout_buf = ""
 
-	local started, job_id = pcall(vim.fn.jobstart, self:_command(), {
+	local command = self:_command()
+	self:_record("spawn", table.concat(command, " ") .. "  (cwd: " .. tostring(self.opts.cwd) .. ")")
+
+	local started, job_id = pcall(vim.fn.jobstart, command, {
 		cwd = self.opts.cwd,
 		env = self:_env(),
 		stdout_buffered = false,
@@ -175,6 +228,7 @@ function Pi:send(command, callback)
 	end
 
 	local payload = command:encode()
+	self:_record("sent", payload)
 	if self._log then
 		self._log:sent(payload)
 	end
@@ -299,6 +353,7 @@ function Pi:_on_stdout(data)
 	for i = 1, #data - 1 do
 		local line = data[i]
 		if line ~= "" then
+			self:_record("received", line)
 			if self._log then
 				self._log:received(line)
 			end
@@ -321,6 +376,7 @@ function Pi:_on_stderr(data)
 	-- A provider error is one json body wrapped over several lines; the
 	-- halves are useless apart, so they are dispatched as one message.
 	for _, line in ipairs(Errors.join(data)) do
+		self:_record("stderr", line)
 		self:_dispatch({ type = "_stderr", message = line })
 	end
 end
@@ -338,6 +394,7 @@ function Pi:_on_exit(code, job)
 	self.job_id = nil
 	self._stdout_buf = ""
 	self._pending = {}
+	self:_record("exit", "pi exited with " .. tostring(code))
 	self:_dispatch({ type = "_process_exit", code = code })
 end
 
