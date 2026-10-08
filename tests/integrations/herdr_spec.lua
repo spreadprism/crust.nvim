@@ -34,13 +34,14 @@ local function record(hold)
 			on_exit()
 		end
 	end
-	return calls, function()
-		local queue = pending
-		pending = {}
-		for _, on_exit in ipairs(queue) do
-			on_exit()
+	return calls,
+		function()
+			local queue = pending
+			pending = {}
+			for _, on_exit in ipairs(queue) do
+				on_exit()
+			end
 		end
-	end
 end
 
 ---@param argv string[]
@@ -114,9 +115,11 @@ describe("integrations.herdr", function()
 		end)
 
 		it("takes a function", function()
-			config.options = { herdr = { enabled = function()
-				return false
-			end } }
+			config.options = { herdr = {
+				enabled = function()
+					return false
+				end,
+			} }
 			config.config = nil
 			assert.is_false(Herdr.available())
 		end)
@@ -239,6 +242,19 @@ describe("integrations.herdr", function()
 			assert.are.equal("release-agent", calls[2][3])
 		end)
 
+		it("stays released: a later report must not list the agent again", function()
+			local calls = record()
+			Herdr.report("working")
+			Herdr.release()
+
+			-- What a dying pi process does on the way out: its chat settles,
+			-- and a settle reports idle. The pane is not ours anymore.
+			assert.is_false(Herdr.busy("chat", false))
+			assert.is_false(Herdr.report("idle", { force = true }))
+			assert.are.equal(2, #calls, "nothing after the release-agent call")
+			assert.is_nil(Herdr.state())
+		end)
+
 		it("waits for herdr only when asked, so quitting cannot kill the call", function()
 			local calls = record()
 			Herdr.release()
@@ -268,6 +284,39 @@ describe("integrations.herdr", function()
 			assert.are.equal("release-agent", calls[2][3])
 			assert.is_true(calls[2].opts.sync)
 			assert.is_nil(Herdr.state())
+		end)
+
+		it("stays released through the rest of the shutdown", function()
+			local calls = record()
+			Herdr.setup()
+			Herdr.busy("chat", true)
+			assert.are.equal(2, #calls)
+
+			vim.api.nvim_exec_autocmds("VimLeavePre", { group = "crust.herdr" })
+			assert.are.equal("release-agent", calls[3][3])
+
+			-- neovim kills the pi processes it owns *after* `VimLeavePre`, and
+			-- each exit settles a chat, which reports idle. With a chat or a
+			-- preloaded process running (the normal config, never the minimal
+			-- one) that is what left the agent in the sidebar.
+			Herdr.busy("chat", false)
+			Herdr.busy("quickprompt", false)
+			vim.api.nvim_exec_autocmds("VimLeave", { group = "crust.herdr" })
+
+			assert.are.equal(3, #calls, "the release is the last thing herdr hears")
+			assert.is_nil(Herdr.state())
+		end)
+
+		it("claims the pane again on a later setup", function()
+			local calls = record()
+			Herdr.setup()
+			Herdr.release()
+			assert.is_false(Herdr.report("working"))
+
+			-- `crust.stop()` releases, `crust.setup()` must start reporting again.
+			assert.is_true(Herdr.setup())
+			assert.are.equal("idle", value(calls[#calls], "--state"))
+			assert.is_true(Herdr.report("working"))
 		end)
 
 		it("is a no-op outside herdr: no report, no autocmd", function()

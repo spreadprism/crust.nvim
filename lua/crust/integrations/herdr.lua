@@ -57,6 +57,15 @@ local seq = 0
 ---@type table<string, boolean>
 local busy = {}
 
+--- The pane was handed back and must not be claimed again.
+---
+--- Quitting is what needs this: the release goes out on `VimLeavePre`, and
+--- only then does neovim kill the pi processes it owns. Every one of those
+--- deaths is an `_process_exit` that settles its chat, and a settle reports
+--- `idle` — which would list the agent again, in a pane crust just gave
+--- up. `setup` and `reset` take the claim back.
+local released = false
+
 local augroup = nil
 
 ---@return Crust.Config.Herdr
@@ -196,7 +205,7 @@ end
 ---@return boolean sent false when the integration is off, or the state is already the reported one
 function M.report(state, opts)
 	opts = opts or {}
-	if not M.available() then
+	if released or not M.available() then
 		return false
 	end
 
@@ -250,6 +259,8 @@ function M.release(opts)
 	-- Whatever was in flight is about to be irrelevant, and its callback
 	-- must not revive the agent by sending the queued state after this.
 	inflight = false
+	-- And neither must whatever happens while the editor tears itself down.
+	released = true
 
 	local argv = M.command(nil)
 	if not argv then
@@ -269,6 +280,7 @@ function M.setup()
 	end
 
 	augroup = vim.api.nvim_create_augroup("crust.herdr", { clear = true })
+	released = false
 
 	-- Released once, on whichever of the two fires first: `VimLeavePre` is
 	-- skipped when the editor is torn down by `:qa!` from a modified buffer
@@ -299,6 +311,7 @@ function M.reset()
 	queued = nil
 	reported = nil
 	inflight = false
+	released = false
 	if augroup then
 		pcall(vim.api.nvim_del_augroup_by_id, augroup)
 		augroup = nil
