@@ -9,6 +9,18 @@ local RATE_LIMIT = {
 	' later."},"request_id":"req_011Cfg2yxbMsU8ECbLNc4yqS"}',
 }
 
+--- A dead oauth refresh, as pi reports it on the message it gave up on:
+--- the sentence, the same failure again under `details=`, then the stack.
+local OAUTH = table.concat({
+	"OAuth refresh failed for anthropic: Anthropic token refresh request failed."
+		.. " url=https://platform.claude.com/v1/oauth/token; details=Error: HTTP request failed."
+		.. ' status=400; url=https://platform.claude.com/v1/oauth/token; body={"error":'
+		.. ' "invalid_grant", "error_description": "Refresh token not found or invalid"};'
+		.. " stack=Error: HTTP request failed. status=400",
+	"    at postJson (file:///nix/store/pi/anthropic.js:75:4438)",
+	"    at async refreshAnthropicToken (file:///nix/store/pi/anthropic.js:75:7484)",
+}, "\n")
+
 describe("pi.errors", function()
 	describe("join", function()
 		it("puts a json body wrapped over two lines back together", function()
@@ -66,6 +78,14 @@ describe("pi.errors", function()
 			assert.is_nil(parsed.kind)
 		end)
 
+		it("reads an oauth body, past the details and the stack trace", function()
+			local parsed = Errors.parse(OAUTH)
+
+			assert.are.equal(400, parsed.status)
+			assert.are.equal("invalid_grant", parsed.kind)
+			assert.are.equal("Refresh token not found or invalid", parsed.message)
+		end)
+
 		it("answers nothing for an empty line", function()
 			assert.is_nil(Errors.parse(""))
 			assert.is_nil(Errors.parse("   "))
@@ -91,6 +111,10 @@ describe("pi.errors", function()
 			assert.are.equal("500: something went wrong", Errors.pretty("Error: 500 something went wrong"))
 		end)
 
+		it("reduces a dead refresh token to the line that matters", function()
+			assert.are.equal("invalid grant (400): Refresh token not found or invalid", Errors.pretty(OAUTH))
+		end)
+
 		it("hands back what it does not understand", function()
 			assert.are.equal("stack traceback: ...", Errors.pretty("stack traceback: ..."))
 		end)
@@ -106,6 +130,7 @@ describe("pi.errors", function()
 		it("calls the other refusals hopeless too", function()
 			assert.is_true(Errors.is_fatal('{"error":{"type":"authentication_error","message":"bad key"}}'))
 			assert.is_true(Errors.is_fatal("Error: 401 unauthorized"))
+			assert.is_true(Errors.is_fatal(OAUTH))
 		end)
 
 		it("leaves a transient failure to pi's own retry", function()

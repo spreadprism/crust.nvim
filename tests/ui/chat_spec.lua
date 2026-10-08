@@ -244,6 +244,41 @@ describe("ui.chat", function()
 			assert.is_false(chat._streaming)
 		end)
 
+		it("reports a turn that failed without writing anything", function()
+			feed({
+				{ type = "agent_start" },
+				{
+					type = "message_end",
+					message = {
+						role = "assistant",
+						stopReason = "error",
+						errorMessage = 'OAuth refresh failed for anthropic: status=400; body={"error":'
+							.. ' "invalid_grant", "error_description": "Refresh token not found or invalid"}',
+						usage = { input = 10, cost = { total = 9 } },
+					},
+				},
+				{ type = "agent_end" },
+			})
+
+			local text = table.concat(chat:output():lines(), "\n")
+			assert.is_truthy(
+				text:find("**crust: invalid grant (400): Refresh token not found or invalid**", 1, true)
+			)
+		end)
+
+		it("says a failure once, on stderr and on the message it broke", function()
+			local failure = '{"error":{"type":"overloaded_error","message":"Overloaded"}}'
+			feed({
+				{ type = "agent_start" },
+				{ type = "_stderr", message = failure },
+				{ type = "message_end", message = { role = "assistant", stopReason = "error", errorMessage = failure } },
+			})
+
+			local text = table.concat(chat:output():lines(), "\n")
+			local _, count = text:gsub("overloaded: Overloaded", "")
+			assert.are.equal(1, count)
+		end)
+
 		it("sums a provider failure up instead of printing the json", function()
 			feed({
 				{ type = "agent_start" },

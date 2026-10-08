@@ -33,6 +33,9 @@ local M = {}
 local FATAL_KINDS = {
 	rate_limit_error = true,
 	authentication_error = true,
+	-- A dead refresh token: the next request is refused the same way.
+	invalid_grant = true,
+	invalid_client = true,
 	permission_error = true,
 	invalid_request_error = true,
 }
@@ -133,14 +136,20 @@ function M.parse(text)
 		return nil
 	end
 
+	-- pi repeats itself when a request fails: the sentence, then the same
+	-- failure again under `details=`, then a stack trace. The first part
+	-- plus the json body is the whole story.
+	local trimmed = text:match("^(.-)\n%s+at [^\n]") or text
+	trimmed = trimmed:gsub("; stack=.*", "")
+
 	-- The body may have been wrapped mid-sentence; json has no newlines of
 	-- its own, so folding them back into spaces is safe.
-	local flat = text:gsub("%s*\n%s*", " ")
+	local flat = trimmed:gsub("%s*\n%s*", " ")
 
 	---@type Crust.Pi.Errors.Parsed
 	local parsed = { message = vim.trim(flat) }
 
-	local status = flat:match("^%s*[Ee]rror:%s*(%d%d%d)") or flat:match("^%s*(%d%d%d)%s")
+	local status = flat:match("^%s*[Ee]rror:%s*(%d%d%d)") or flat:match("^%s*(%d%d%d)%s") or flat:match("status=(%d%d%d)")
 	if status then
 		parsed.status = tonumber(status)
 	end
@@ -161,9 +170,14 @@ function M.parse(text)
 
 	local inner = type(decoded.error) == "table" and decoded.error or decoded
 	parsed.kind = type(inner.type) == "string" and inner.type ~= "error" and inner.type or nil
+	-- OAuth names the failure in `error` and explains it in
+	-- `error_description`: {"error":"invalid_grant","error_description":...}
+	if not parsed.kind and type(decoded.error) == "string" and decoded.error ~= "error" then
+		parsed.kind = decoded.error
+	end
 	parsed.request_id = type(decoded.request_id) == "string" and decoded.request_id or nil
 
-	local message = inner.message or decoded.message
+	local message = inner.message or decoded.message or decoded.error_description
 	if type(message) == "string" and vim.trim(message) ~= "" then
 		parsed.message = vim.trim(message)
 	end

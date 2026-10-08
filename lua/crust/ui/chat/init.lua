@@ -10,6 +10,7 @@
 ---@field private _streaming boolean
 ---@field private _compacting boolean pi is summarizing the context right now
 ---@field private _cancelling boolean an abort was sent and pi has not settled yet
+---@field private _last_error string? failure already shown this turn, so it is not shown twice
 ---@field private _cancel_timer uv.uv_timer_t? grace period before the hard way out
 ---@field private _augroup integer?
 ---@field private _closing boolean
@@ -470,7 +471,14 @@ end
 ---@param message string
 function Chat:_on_stderr(message)
 	local Errors = require("crust.pi.errors")
-	self._output:error(Errors.pretty(message))
+	local pretty = Errors.pretty(message)
+
+	-- A failed request is reported twice: once on stderr, once as the
+	-- `stopReason` of the message pi could not finish. Say it once.
+	if pretty ~= self._last_error then
+		self._last_error = pretty
+		self._output:error(pretty)
+	end
 
 	if not Errors.is_fatal(message) or not self._streaming then
 		return
@@ -1037,6 +1045,7 @@ function Chat:_on_event(event)
 		self:_stop_cancel_timer()
 		self._cancelling = false
 		self._streaming = true
+		self._last_error = nil
 		-- Outside herdr, or with the integration off, this is a no-op.
 		require("crust.integrations.herdr").busy("chat", true)
 		self._output:header(require("crust.config").get().labels.agent, Highlights.AGENT_TITLE)
@@ -1053,6 +1062,12 @@ function Chat:_on_event(event)
 			local stop = message.stopReason
 			if stop ~= "aborted" and stop ~= "error" then
 				self._bar:add_usage(message.usage)
+			end
+			-- A turn that failed before writing anything: without this the
+			-- panel just goes quiet, pi only says why in the message.
+			if stop == "error" then
+				self._output:end_thinking()
+				self:_on_stderr(message.errorMessage or "the turn failed")
 			end
 		end
 	elseif event.type == "message_update" then
