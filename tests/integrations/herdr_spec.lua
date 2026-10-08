@@ -25,8 +25,9 @@ end
 local function record(hold)
 	local calls = {}
 	local pending = {}
-	Herdr.spawn = function(argv, on_exit)
+	Herdr.spawn = function(argv, on_exit, opts)
 		calls[#calls + 1] = argv
+		calls[#calls].opts = opts
 		if hold then
 			pending[#pending + 1] = on_exit
 		else
@@ -225,6 +226,27 @@ describe("integrations.herdr", function()
 			assert.is_false(Herdr.release())
 			assert.are.equal(0, #calls)
 		end)
+
+		it("drops a report still in flight instead of reviving the agent", function()
+			local calls, finish = record(true)
+			Herdr.report("working")
+			Herdr.report("idle")
+			assert.is_true(Herdr.release())
+
+			-- The queued `idle` must not be sent after the release-agent call.
+			finish()
+			assert.are.equal(2, #calls)
+			assert.are.equal("release-agent", calls[2][3])
+		end)
+
+		it("waits for herdr only when asked, so quitting cannot kill the call", function()
+			local calls = record()
+			Herdr.release()
+			assert.is_nil(calls[1].opts and calls[1].opts.sync)
+
+			Herdr.release({ sync = true })
+			assert.is_true(calls[2].opts.sync)
+		end)
 	end)
 
 	describe("setup", function()
@@ -232,6 +254,20 @@ describe("integrations.herdr", function()
 			local calls = record()
 			assert.is_true(Herdr.setup())
 			assert.are.equal("idle", value(calls[1], "--state"))
+		end)
+
+		it("releases the pane once when the editor quits", function()
+			local calls = record()
+			Herdr.setup()
+
+			-- Both events fire on a real quit; herdr must hear about it once.
+			vim.api.nvim_exec_autocmds("VimLeavePre", { group = "crust.herdr" })
+			vim.api.nvim_exec_autocmds("VimLeave", { group = "crust.herdr" })
+
+			assert.are.equal(2, #calls)
+			assert.are.equal("release-agent", calls[2][3])
+			assert.is_true(calls[2].opts.sync)
+			assert.is_nil(Herdr.state())
 		end)
 
 		it("is a no-op outside herdr: no report, no autocmd", function()

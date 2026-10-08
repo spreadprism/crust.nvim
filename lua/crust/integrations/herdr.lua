@@ -140,9 +140,26 @@ end
 
 --- Run one herdr call. Replaced in specs; failures are ignored on purpose,
 --- a missing or old herdr binary must not surface in the editor.
+---
+--- `opts.sync` waits for the call to finish instead of answering on the
+--- event loop. Quitting needs it: neovim kills its children on the way out,
+--- so a release left in flight is killed before herdr hears it, and the
+--- agent stays in the sidebar forever.
 ---@param argv string[]
 ---@param on_exit fun()
-function M.spawn(argv, on_exit)
+---@param opts? { sync?: boolean }
+function M.spawn(argv, on_exit, opts)
+	if opts and opts.sync then
+		local ok, handle = pcall(vim.system, argv, { text = true, timeout = TIMEOUT_MS })
+		if ok then
+			pcall(function()
+				handle:wait(TIMEOUT_MS)
+			end)
+		end
+		on_exit()
+		return
+	end
+
 	local ok = pcall(vim.system, argv, { text = true, timeout = TIMEOUT_MS }, function()
 		vim.schedule(on_exit)
 	end)
@@ -220,8 +237,9 @@ end
 
 --- Hand the pane back: crust's name, state and resume command are cleared
 --- from it right away.
+---@param opts? { sync?: boolean } wait for herdr to answer, for `VimLeavePre`
 ---@return boolean sent
-function M.release()
+function M.release(opts)
 	if not M.available() then
 		return false
 	end
@@ -229,15 +247,16 @@ function M.release()
 	busy = {}
 	queued = nil
 	reported = nil
+	-- Whatever was in flight is about to be irrelevant, and its callback
+	-- must not revive the agent by sending the queued state after this.
+	inflight = false
 
 	local argv = M.command(nil)
 	if not argv then
 		return false
 	end
 
-	-- Quitting neovim is the usual caller, so this one is fire and forget:
-	-- there is no event loop left to run a callback on.
-	M.spawn(argv, function() end)
+	M.spawn(argv, function() end, { sync = opts and opts.sync or nil })
 	return true
 end
 
@@ -250,10 +269,21 @@ function M.setup()
 	end
 
 	augroup = vim.api.nvim_create_augroup("crust.herdr", { clear = true })
-	vim.api.nvim_create_autocmd("VimLeavePre", {
+
+	-- Released once, on whichever of the two fires first: `VimLeavePre` is
+	-- skipped when the editor is torn down by `:qa!` from a modified buffer
+	-- handler or by a fatal error, `VimLeave` still runs.
+	local released = false
+	vim.api.nvim_create_autocmd({ "VimLeavePre", "VimLeave" }, {
 		group = augroup,
 		callback = function()
-			M.release()
+			if released then
+				return
+			end
+			released = true
+			-- Synchronous: neovim kills the children it still owns as it
+			-- exits, and a killed release leaves the agent listed.
+			M.release({ sync = true })
 		end,
 	})
 

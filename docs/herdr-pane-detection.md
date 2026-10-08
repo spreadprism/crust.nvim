@@ -54,8 +54,12 @@ require("crust").setup({
   decides in practice: outside herdr nothing is spawned, whatever the flag
   says. Set `enabled = false` to stay out of a herdr pane anyway.
 - `setup()` checks the environment first: no pane, no augroup and no report.
-  Inside one it claims the pane with an `idle` report and releases it on
-  `VimLeavePre`. `crust.stop()` releases too.
+  Inside one it claims the pane with an `idle` report and releases it on the
+  first of `VimLeavePre` / `VimLeave`. `crust.stop()` releases too.
+- The quit release runs **synchronously** (`release({ sync = true })`):
+  neovim kills the children it still owns as it exits, so a fire-and-forget
+  `release-agent` is killed before herdr hears it and the agent stays listed
+  — one stale entry per editor session.
 - The chat drives the state: `working` on `agent_start`, `idle` from
   `Chat:_settle()` (turn end, cancel, stderr failure, process exit).
 - Reports go through the CLI (`"$HERDR_BIN_PATH" pane report-agent …`) with
