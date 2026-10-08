@@ -487,6 +487,7 @@ end
 
 ---@private
 function Chat:_settle()
+	require("crust.integrations.herdr").busy("chat", false)
 	self:_stop_cancel_timer()
 	self._cancelling = false
 	self._streaming = false
@@ -1036,6 +1037,8 @@ function Chat:_on_event(event)
 		self:_stop_cancel_timer()
 		self._cancelling = false
 		self._streaming = true
+		-- Outside herdr, or with the integration off, this is a no-op.
+		require("crust.integrations.herdr").busy("chat", true)
 		self._output:header(require("crust.config").get().labels.agent, Highlights.AGENT_TITLE)
 		self._status:set(require("crust.config").get().status_text)
 	elseif event.type == "agent_end" then

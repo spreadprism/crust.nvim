@@ -276,6 +276,9 @@ function M.stop()
 	end
 	require("crust.quickprompt").stop()
 	require("crust.quickcomplete").stop()
+	-- Nothing of crust is running anymore, so the pane is not ours either.
+	require("crust.integrations.herdr").release()
+	require("crust.integrations.herdr").reset()
 	dir = nil
 	require("crust.sessions.cache").stop()
 end
@@ -347,6 +350,10 @@ function M.setup(opts)
 
 	-- Starts the neovim socket now so it exists before the first chat.
 	require("crust.extension").setup()
+
+	-- Claims this herdr pane, when neovim runs in one and the user asked for
+	-- it. Does nothing otherwise.
+	require("crust.integrations.herdr").setup()
 
 	M.watch_dir()
 

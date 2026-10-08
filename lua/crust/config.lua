@@ -78,6 +78,11 @@ local M = {}
 ---@class Crust.Config.Expansion
 ---@field enabled boolean|fun(): boolean rewrite prompts for the model, e.g. `@path` into the file content
 
+---@class Crust.Config.Herdr report the chat's state to the herdr pane neovim runs in
+---@field enabled boolean|fun(): boolean nothing happens outside herdr, so this only gates the pane being claimed
+---@field agent string name shown in herdr's sidebar and in `herdr agent list`
+---@field source string identifies this integration to herdr, must not start with `herdr:`
+
 ---@class Crust.Config.Compaction
 ---@field auto? boolean let pi shrink the context on its own threshold, nil leaves pi's setting alone
 ---@field notify boolean write a notice in the scrollback when a compaction happens
@@ -94,6 +99,7 @@ local M = {}
 ---@field context Crust.Config.Context
 ---@field expansion Crust.Config.Expansion
 ---@field extension Crust.Config.Extension
+---@field herdr Crust.Config.Herdr agent state reported to herdr
 ---@field log Crust.Config.Log
 ---@field render_markdown Crust.Config.RenderMarkdown
 ---@field icons Crust.Config.Icons status icons shown before a tool title
@@ -215,6 +221,13 @@ M.defaults = {
 	},
 	expansion = {
 		enabled = true,
+	},
+	-- Only ever speaks when herdr put its pane variables in the environment,
+	-- so this costs nothing anywhere else.
+	herdr = {
+		enabled = true,
+		agent = "crust",
+		source = "crust.nvim",
 	},
 	extension = {
 		enabled = false,
