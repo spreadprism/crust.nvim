@@ -39,6 +39,13 @@ describe("quickprompt", function()
 		config.config = nil
 
 		path = vim.fn.tempname() .. ".lua"
+		-- On macOS $TMPDIR is under /private, and that is the name neovim
+		-- hands back for the buffer; the file itself does not exist yet, so
+		-- only its directory can be resolved.
+		path = vim.fs.joinpath(
+			vim.uv.fs_realpath(vim.fs.dirname(path)) or vim.fs.dirname(path),
+			vim.fs.basename(path)
+		)
 		buf = vim.api.nvim_create_buf(false, true)
 		vim.api.nvim_buf_set_name(buf, path)
 		vim.api.nvim_buf_set_lines(buf, 0, -1, false, {

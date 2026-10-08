@@ -12,6 +12,9 @@ describe("send", function()
 	before_each(function()
 		dir = vim.fn.tempname()
 		vim.fn.mkdir(dir, "p")
+		-- On macOS $TMPDIR is under /private, and that is the name neovim
+		-- hands back for the buffer; the unresolved one would never match.
+		dir = vim.uv.fs_realpath(dir) or dir
 		buf = vim.api.nvim_create_buf(false, true)
 	end)
 

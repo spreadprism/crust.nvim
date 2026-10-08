@@ -46,6 +46,9 @@ describe("pi sessions", function()
 	before_each(function()
 		cwd = vim.fn.tempname()
 		vim.fn.mkdir(cwd, "p")
+		-- On macOS $TMPDIR is under /private, and that is the cwd pi reports
+		-- back; the unresolved one keys a different session directory.
+		cwd = vim.uv.fs_realpath(cwd) or cwd
 		dir = Sessions.dir(cwd)
 	end)
 
