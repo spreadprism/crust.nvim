@@ -200,7 +200,15 @@ M.defaults = {
 		components = {
 			-- Same thresholds as the usage float: orange from half the plan,
 			-- red when there is little left.
-			usage = { icon = "󰾆", warn = 50, error = 80 },
+			-- The two limits carry a glyph each, so the component itself
+			-- needs no icon of its own.
+			usage = {
+				icon = "",
+				session_icon = "\u{f017}",
+				weekly_icon = "\u{f0a33}",
+				warn = 50,
+				error = 80,
+			},
 			cost = { icon = nil },
 			model = { icon = "󰚩" },
 			tokens = { icon = "\u{f0ec}" },

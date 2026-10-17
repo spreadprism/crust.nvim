@@ -31,12 +31,15 @@ The prompt bar carries the short form whenever an **anthropic** model is
 selected:
 
 ```
-󰾆 5h 21% · wk 54%                                       󰚩 claude-opus-4-6
+ 21% 󰨳 54%                                           󰚩 claude-opus-4-6
 ```
 
-It is the `usage` input-bar component, orange from 50% and red from 80%.
-Swap it for the per-session dollars with
-`input_bar = { layout = { left = { "cost" } } }`.
+It is the `usage` input-bar component: the 5-hour session behind , the
+weekly limit behind 󰨳, each padded to two digits so the bar keeps its
+width, orange from 50% and red from 80%. The glyphs are
+`components.usage.session_icon` / `weekly_icon`; set either to `""` for the
+`5h 21% wk 54%` wording instead. Swap the whole component for the
+per-session dollars with `input_bar = { layout = { left = { "cost" } } }`.
 
 ## Debugging
 

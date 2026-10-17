@@ -89,6 +89,41 @@ describe("usage", function()
 		it("ignores extra usage that is turned off", function()
 			assert.are.same({}, Render.rows({ extra_usage = { is_enabled = false } }, now))
 		end)
+
+		it("survives the json nulls the endpoint sends as vim.NIL", function()
+			local data = {
+				limits = {
+					{
+						kind = "session",
+						percent = vim.NIL,
+						resets_at = vim.NIL,
+						severity = vim.NIL,
+					},
+					{ kind = "weekly_scoped", percent = 10, scope = { model = { display_name = vim.NIL } } },
+				},
+				seven_day_breakdown = { rows = { { display_name = vim.NIL, percent = vim.NIL } } },
+				extra_usage = {
+					is_enabled = true,
+					used_credits = 100,
+					monthly_limit = vim.NIL,
+					currency = vim.NIL,
+					decimal_places = vim.NIL,
+				},
+			}
+
+			local rows = Render.rows(data, now)
+			assert.are.equal(0, rows[1].percent)
+			assert.are.equal("", rows[1].detail)
+			assert.is_nil(rows[1].tag)
+			assert.are.equal("Weekly (model)", rows[2].label)
+			assert.are.equal("(1.00  used, no limit)", rows[3].detail)
+			assert.is_nil(Render.breakdown(data))
+
+			-- The whole block has to render, that is what the float asks for.
+			assert.has_no.errors(function()
+				Render.lines(data, { now = now })
+			end)
+		end)
 	end)
 
 	describe("render.lines", function()

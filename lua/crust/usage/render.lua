@@ -41,10 +41,26 @@ function M.level(percent)
 	return Highlights.USAGE_OK
 end
 
----@param value number?
+--- A json `null` decodes to `vim.NIL`, which is userdata: truthy, so
+--- `value or default` keeps it, and every arithmetic or concatenation on
+--- it raises. Anthropic sends `null` for a limit it has no figure for, so
+--- every field of the response is read through one of these.
+---@param value any
+---@return number?
+local function num(value)
+	return type(value) == "number" and value or nil
+end
+
+---@param value any
+---@return string?
+local function str(value)
+	return type(value) == "string" and value or nil
+end
+
+---@param value any
 ---@return number
 local function pct(value)
-	return math.max(math.floor((value or 0) + 0.5), 0)
+	return math.max(math.floor((num(value) or 0) + 0.5), 0)
 end
 
 --- Epoch seconds of an ISO 8601 timestamp, UTC or with a `Z`/`+00:00` suffix.
@@ -118,26 +134,26 @@ end
 ---@param limit Crust.Usage.Limit
 ---@return string
 function M.label(limit)
-	local kind = limit.kind or "limit"
+	local kind = str(limit.kind) or "limit"
 	if kind == "session" then
 		return "5-hour session"
 	elseif kind == "weekly_all" then
 		return "Weekly (all models)"
 	elseif kind == "weekly_scoped" then
-		local scope = limit.scope or {}
-		local model = scope.model or {}
-		return "Weekly (" .. (model.display_name or "model") .. ")"
+		local scope = type(limit.scope) == "table" and limit.scope or {}
+		local model = type(scope.model) == "table" and scope.model or {}
+		return "Weekly (" .. (str(model.display_name) or "model") .. ")"
 	end
 	local text = kind:gsub("_", " ")
 	return text:sub(1, 1):upper() .. text:sub(2)
 end
 
 --- Minor units into "215.48": the API sends cents with a decimal count.
----@param value number?
+---@param value any
 ---@param decimals integer
 ---@return string
 local function money(value, decimals)
-	local amount = math.floor((value or 0) + 0.5)
+	local amount = math.floor((num(value) or 0) + 0.5)
 	if decimals <= 0 then
 		return tostring(amount)
 	end
@@ -158,25 +174,25 @@ function M.rows(data, now)
 	end
 
 	for _, limit in ipairs(data.limits or {}) do
-		local severity = limit.severity
+		local severity = str(limit.severity)
 		rows[#rows + 1] = {
 			label = M.label(limit),
 			percent = pct(limit.percent),
 			detail = M.resets_in(M.timestamp(limit.resets_at), now),
 			tag = (severity and severity ~= "normal") and severity or nil,
-			kind = limit.kind,
+			kind = str(limit.kind),
 		}
 	end
 
 	local extra = data.extra_usage
 	if type(extra) == "table" and extra.is_enabled == true then
-		local decimals = extra.decimal_places or 2
-		local currency = extra.currency or ""
-		local used, limit = extra.used_credits or 0, extra.monthly_limit or 0
+		local decimals = num(extra.decimal_places) or 2
+		local currency = str(extra.currency) or ""
+		local used, limit = num(extra.used_credits) or 0, num(extra.monthly_limit) or 0
 		local percent, detail = nil, nil
 
 		if limit > 0 then
-			percent = pct(extra.utilization or (100 * used / limit))
+			percent = pct(num(extra.utilization) or (100 * used / limit))
 			detail = "(" .. money(used, decimals) .. " / " .. money(limit, decimals) .. " " .. currency .. ")"
 		else
 			detail = "(" .. money(used, decimals) .. " " .. currency .. " used, no limit)"
@@ -210,8 +226,9 @@ function M.breakdown(data)
 	local breakdown = type(data) == "table" and data.seven_day_breakdown or nil
 	local parts = {}
 	for _, row in ipairs((type(breakdown) == "table" and breakdown.rows) or {}) do
-		if (row.percent or 0) > 0 then
-			parts[#parts + 1] = (row.display_name or "model") .. " " .. row.percent .. "%"
+		local percent = num(row.percent) or 0
+		if percent > 0 then
+			parts[#parts + 1] = (str(row.display_name) or "model") .. " " .. percent .. "%"
 		end
 	end
 	if #parts == 0 then

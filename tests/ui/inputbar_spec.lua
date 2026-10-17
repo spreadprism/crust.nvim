@@ -94,9 +94,36 @@ describe("ui.chat.inputbar", function()
 			bar:update_state({ model = { id = "claude-opus-4-6", provider = "anthropic" } })
 
 			local chunks = bar:line(60)
-			assert.is_truthy(text():find("5h 21%", 1, true))
-			assert.is_truthy(text():find("wk 54%", 1, true))
+			-- A glyph per limit, each figure padded to two digits.
+			assert.is_truthy(text():find("\u{f017} 21% \u{f0a33} 54%", 1, true))
 			assert.is_truthy(chunks[#chunks][1]:find("claude-opus-4-6", 1, true))
+		end)
+
+		it("pads a single-digit plan figure so the bar does not jitter", function()
+			Usage.clear()
+			Usage.inject({
+				limits = {
+					{ kind = "session", percent = 5 },
+					{ kind = "weekly_all", percent = 20 },
+				},
+			})
+			bar:update_state({ model = { id = "claude-opus-4-6", provider = "anthropic" } })
+
+			assert.is_truthy(text():find("\u{f017} 05% \u{f0a33} 20%", 1, true))
+		end)
+
+		it("falls back to the 5h / wk wording without the glyphs", function()
+			configure({ components = { usage = { session_icon = "", weekly_icon = "" } } })
+			Usage.clear()
+			Usage.inject({
+				limits = {
+					{ kind = "session", percent = 5 },
+					{ kind = "weekly_all", percent = 20 },
+				},
+			})
+			bar:update_state({ model = { id = "claude-opus-4-6", provider = "anthropic" } })
+
+			assert.is_truthy(text():find("5h 05% wk 20%", 1, true))
 		end)
 
 		it("shows no plan usage for a model that is not anthropic", function()

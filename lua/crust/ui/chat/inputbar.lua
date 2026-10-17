@@ -93,9 +93,16 @@ function InputBar.components.cost(state, opts)
 	return string.format("$%.3f", state.cost), threshold(state.cost, opts)
 end
 
---- `5h 21% · wk 54%`, the Claude plan limits of the account pi is logged
---- into. Only anthropic models have them, and nothing is drawn until the
---- first answer from the API lands (`InputBar:render` asks for it).
+--- ` 05% 󰨳 20%`, the Claude plan limits of the account pi is logged into:
+--- the 5-hour session first, the weekly limit second, each behind its own
+--- glyph and padded to two digits so the bar does not jitter as the
+--- figures grow. Only anthropic models have them, and nothing is drawn
+--- until the first answer from the API lands (`InputBar:render` asks for
+--- it).
+---
+--- `session_icon` and `weekly_icon` name the two glyphs; set either to `""`
+--- to fall back to the `5h` / `wk` wording. `icon` still prefixes the
+--- whole component, and is empty by default: the per-limit glyphs say it.
 function InputBar.components.usage(state, opts)
 	if state.model_provider ~= "anthropic" then
 		return nil
@@ -106,10 +113,20 @@ function InputBar.components.usage(state, opts)
 		return nil
 	end
 
+	---@param value any
+	---@param fallback string
+	---@return string
+	local function label(value, fallback)
+		if value == nil then
+			return fallback
+		end
+		return type(value) == "string" and value ~= "" and value or fallback
+	end
+
 	local summary = require("crust.usage.render").summary(data)
 	local parts = {
-		{ prefix = "5h ", row = summary.session },
-		{ prefix = "wk ", row = summary.weekly },
+		{ label = label(opts.session_icon, "5h"), row = summary.session },
+		{ label = label(opts.weekly_icon, "wk"), row = summary.weekly },
 	}
 
 	---@type Crust.Chat.InputBar.Chunk[]
@@ -122,10 +139,12 @@ function InputBar.components.usage(state, opts)
 		local row = part.row
 		if row and row.percent then
 			if #chunks > 0 and chunks[#chunks][1]:sub(-1) ~= " " then
-				chunks[#chunks + 1] = { " · ", Highlights.INPUT_BAR }
+				chunks[#chunks + 1] = { " ", Highlights.INPUT_BAR }
 			end
+			-- The glyph is coloured with its figure, so a limit that is
+			-- nearly spent reads as one red token.
 			chunks[#chunks + 1] = {
-				part.prefix .. row.percent .. "%",
+				part.label .. " " .. string.format("%02d%%", row.percent),
 				threshold(row.percent, opts) or Highlights.INPUT_BAR,
 			}
 		end

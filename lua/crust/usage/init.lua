@@ -164,7 +164,12 @@ local function request(token, callback)
 			return
 		end
 
-		local decoded_ok, decoded = pcall(vim.json.decode, body)
+		-- `luanil` drops the json nulls: without it they decode to `vim.NIL`,
+		-- a truthy userdata that survives every `x or default` and raises on
+		-- the first bit of arithmetic. Anthropic sends null for a limit it has
+		-- no figure for.
+		local decoded_ok, decoded =
+			pcall(vim.json.decode, body, { luanil = { object = true, array = true } })
 		if not decoded_ok or type(decoded) ~= "table" then
 			callback(nil, "Anthropic sent something that is not json.")
 			return
