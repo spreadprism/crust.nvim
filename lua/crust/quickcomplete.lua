@@ -519,9 +519,18 @@ end
 ---@private
 function M.on_event(event)
 	if event.type == "_process_exit" then
+		if client then
+			require("crust.ui.ask").reset(client)
+		end
 		client = nil
 		inflight = nil
 		set_state("error", "pi exited (" .. tostring(event.code) .. ")")
+		return
+	end
+
+	-- A dialog blocks this process too, and nothing else here answers it.
+	if event.type == "extension_ui_request" and client then
+		require("crust.ui.ask").handle(client, event)
 		return
 	end
 

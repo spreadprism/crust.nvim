@@ -5,6 +5,7 @@ local M = {}
 
 M.input = "crust_input"
 M.output = "crust_output"
+M.ask = "crust_ask"
 
 local registered = false
 
@@ -18,6 +19,7 @@ function M.setup()
 
 	vim.treesitter.language.register("markdown", M.input)
 	vim.treesitter.language.register("markdown", M.output)
+	vim.treesitter.language.register("markdown", M.ask)
 end
 
 return M

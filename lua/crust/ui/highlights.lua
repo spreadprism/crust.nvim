@@ -34,6 +34,9 @@ M.INPUT_BAR_WARNING = "CrustInputBarWarning"
 M.INPUT_BAR_ERROR = "CrustInputBarError"
 M.DIFF_ADD = "CrustDiffAdd"
 M.DIFF_DELETE = "CrustDiffDelete"
+M.ASK_MESSAGE = "CrustAskMessage"
+M.ASK_OPTION = "CrustAskOption"
+M.ASK_KEY = "CrustAskKey"
 
 --- The 16 ansi colours of tool output, indexed 0-15 like the terminal palette.
 ---@type table<integer, string>
@@ -87,6 +90,11 @@ M.groups = {
 	-- back to the Diff groups when the colorscheme has no Added/Removed.
 	[M.DIFF_ADD] = { link = "Added" },
 	[M.DIFF_DELETE] = { link = "Removed" },
+	-- A permission dialog is a question about something that already
+	-- happened: the question reads as normal text, the answers stand out.
+	[M.ASK_MESSAGE] = { link = "Normal" },
+	[M.ASK_OPTION] = { link = "Directory" },
+	[M.ASK_KEY] = { link = "Keyword" },
 }
 
 -- Ansi colours follow the terminal palette, so they match the colorscheme.

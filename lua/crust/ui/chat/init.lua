@@ -1081,6 +1081,10 @@ function Chat:_on_event(event)
 				self._output:append_thinking(ev.delta)
 			end
 		end
+	elseif event.type == "extension_ui_request" then
+		-- An extension — a permission system above all — is asking the user
+		-- something, and pi holds the turn until it gets an answer.
+		require("crust.ui.ask").handle(self._pi, event)
 	elseif event.type == "extension_error" and event.event == "skill_expansion" then
 		self:_on_skill_error(event)
 	elseif event.type == "compaction_start" then
@@ -1094,6 +1098,8 @@ function Chat:_on_event(event)
 		self:_on_stderr(tostring(event.message))
 	elseif event.type == "_process_exit" then
 		self:_settle()
+		-- Nobody is left to answer the dialogs that process opened.
+		require("crust.ui.ask").reset(self._pi)
 		self._output:error("pi exited (" .. tostring(event.code) .. ")")
 	end
 end

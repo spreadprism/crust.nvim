@@ -140,6 +140,12 @@ end
 ---@param event Crust.Pi.Event
 ---@private
 function M.on_event(event)
+	-- A dialog blocks this process too, and nothing else here answers it.
+	if event.type == "extension_ui_request" then
+		require("crust.ui.ask").handle(M.client(), event)
+		return
+	end
+
 	if not pending then
 		return
 	end

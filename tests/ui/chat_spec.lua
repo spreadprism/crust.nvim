@@ -324,6 +324,25 @@ describe("ui.chat", function()
 			feed({ { type = "queue_update", steering = {} } })
 			assert.are.same({ "" }, chat:output():lines())
 		end)
+
+		it("opens a dialog for an extension ui request", function()
+			local Ask = require("crust.ui.ask")
+
+			feed({
+				{
+					type = "extension_ui_request",
+					id = "uuid-1",
+					method = "select",
+					title = "Allow bash?",
+					options = { "Yes", "No" },
+				},
+			})
+
+			local dialog = Ask.current()
+			assert.is_not_nil(dialog)
+			assert.are.equal(chat:pi(), dialog.request.pi)
+			Ask.reset()
+		end)
 	end)
 
 	describe("cancel", function()

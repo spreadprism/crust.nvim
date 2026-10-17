@@ -92,6 +92,10 @@ local M = {}
 ---@field notify boolean write a notice in the scrollback when a compaction happens
 ---@field icon string glyph of that notice
 
+---@class Crust.Config.Ask dialogs an extension opens mid-turn, see `crust.ui.ask`
+---@field enabled boolean draw `extension_ui_request` dialogs, false answers every one of them as cancelled
+---@field notify boolean show the `notify` requests of extensions as notifications
+
 ---@class Crust.Config.Context
 ---@field enabled boolean keep pi's own AGENTS.md and CLAUDE.md discovery
 ---@field files? string|string[]|fun(): string|string[]|nil extra context files, appended after the discovered ones
@@ -119,6 +123,7 @@ local M = {}
 ---@field input_bar Crust.Config.InputBar cost and model under the prompt
 ---@field thinking Crust.Config.Thinking the model's reasoning text
 ---@field compaction Crust.Config.Compaction shrinking the context when it fills up
+---@field ask Crust.Config.Ask permission and other extension dialogs
 ---@field quickprompt Crust.Config.QuickPrompt inline edits, outside the chat
 ---@field quickcomplete Crust.Config.QuickComplete ghost-text completion of the current line
 ---@field raw_tool_blocks boolean keep tool blocks out of the markdown tree
@@ -233,6 +238,13 @@ M.defaults = {
 	},
 	expansion = {
 		enabled = true,
+	},
+	-- A dialog blocks the agent until it is answered, so the only sane
+	-- default is to show it. Turning this off refuses every request instead
+	-- of dropping it, which would hang the turn.
+	ask = {
+		enabled = true,
+		notify = true,
 	},
 	-- Only ever speaks when herdr put its pane variables in the environment,
 	-- so this costs nothing anywhere else.
