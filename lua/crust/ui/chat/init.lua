@@ -503,6 +503,11 @@ function Chat:_settle()
 	self._status:clear()
 	-- A call pi never reported the end of died with the turn, so it failed.
 	self._tools:settle(self._output, "error")
+	-- The turn just spent plan quota: redraw the bar so the usage component
+	-- asks for fresh figures (it refetches once its 60s cache is stale).
+	-- A turn that reported no usage never reaches `add_usage`, so this is
+	-- the one place every ending turn goes through.
+	self._bar:render()
 end
 
 ---@private

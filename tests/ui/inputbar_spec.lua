@@ -4,6 +4,7 @@
 
 local Highlights = require("crust.ui.highlights")
 local InputBar = require("crust.ui.chat.inputbar")
+local Usage = require("crust.usage")
 local config = require("crust.config")
 
 describe("ui.chat.inputbar", function()
@@ -67,6 +68,7 @@ describe("ui.chat.inputbar", function()
 	end)
 
 	after_each(function()
+		Usage.clear()
 		bar:close()
 		if win and vim.api.nvim_win_is_valid(win) then
 			vim.api.nvim_win_close(win, true)
@@ -81,7 +83,33 @@ describe("ui.chat.inputbar", function()
 			assert.is_nil(drawn())
 		end)
 
+		it("puts the plan usage on the left and the model on the right", function()
+			Usage.clear()
+			Usage.inject({
+				limits = {
+					{ kind = "session", percent = 21 },
+					{ kind = "weekly_all", percent = 54 },
+				},
+			})
+			bar:update_state({ model = { id = "claude-opus-4-6", provider = "anthropic" } })
+
+			local chunks = bar:line(60)
+			assert.is_truthy(text():find("5h 21%", 1, true))
+			assert.is_truthy(text():find("wk 54%", 1, true))
+			assert.is_truthy(chunks[#chunks][1]:find("claude-opus-4-6", 1, true))
+		end)
+
+		it("shows no plan usage for a model that is not anthropic", function()
+			Usage.clear()
+			Usage.inject({ limits = { { kind = "session", percent = 21 } } })
+			bar:update_state({ model = { id = "gpt-5", provider = "openai" } })
+
+			assert.is_falsy(text():find("5h", 1, true))
+			assert.is_truthy(text():find("gpt-5", 1, true))
+		end)
+
 		it("puts the cost on the left and the model on the right", function()
+			configure({ layout = { left = { "cost" }, right = { "model" } } })
 			bar:update_state({ model = { id = "claude-opus-4-6" } })
 			bar:add_usage(usage(1.5))
 
@@ -103,6 +131,7 @@ describe("ui.chat.inputbar", function()
 		end)
 
 		it("hides the cost until the session has cost something", function()
+			configure({ layout = { left = { "cost" }, right = { "model" } } })
 			bar:update_state({ model = { id = "gpt-5" } })
 			assert.is_falsy(text():find("$", 1, true))
 

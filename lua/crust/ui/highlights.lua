@@ -34,6 +34,12 @@ M.INPUT_BAR_WARNING = "CrustInputBarWarning"
 M.INPUT_BAR_ERROR = "CrustInputBarError"
 M.DIFF_ADD = "CrustDiffAdd"
 M.DIFF_DELETE = "CrustDiffDelete"
+M.USAGE_TITLE = "CrustUsageTitle"
+M.USAGE_LABEL = "CrustUsageLabel"
+M.USAGE_DIM = "CrustUsageDim"
+M.USAGE_OK = "CrustUsageOk"
+M.USAGE_WARNING = "CrustUsageWarning"
+M.USAGE_ERROR = "CrustUsageError"
 M.ASK_MESSAGE = "CrustAskMessage"
 M.ASK_OPTION = "CrustAskOption"
 M.ASK_KEY = "CrustAskKey"
@@ -92,6 +98,14 @@ M.groups = {
 	[M.DIFF_DELETE] = { link = "Removed" },
 	-- A permission dialog is a question about something that already
 	-- happened: the question reads as normal text, the answers stand out.
+	-- Plan usage: a traffic light over a dim bar, so the eye catches the
+	-- limit that is about to bite and ignores the rest.
+	[M.USAGE_TITLE] = { link = "Title" },
+	[M.USAGE_LABEL] = { link = "Normal" },
+	[M.USAGE_DIM] = { link = "Comment" },
+	[M.USAGE_OK] = { link = "DiagnosticOk" },
+	[M.USAGE_WARNING] = { link = "DiagnosticWarn" },
+	[M.USAGE_ERROR] = { link = "DiagnosticError" },
 	[M.ASK_MESSAGE] = { link = "Normal" },
 	[M.ASK_OPTION] = { link = "Directory" },
 	[M.ASK_KEY] = { link = "Keyword" },

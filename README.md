@@ -7,6 +7,37 @@ A Neovim front-end for [PI](https://pi.dev)
 
 ![crust.nvim chat panel](docs/example.png)
 
+## Claude plan usage
+
+`:Crust usage` (or `require("crust").usage()`) shows what is left of the
+Claude subscription pi is logged into — the same figures as Claude Code's
+`/usage`:
+
+```
+Claude plan usage
+  5-hour session       ████░░░░░░░░░░░░░░░░   21%  (resets in 3h 12m)
+  Weekly (all models)  ███████████░░░░░░░░░   54%  (resets in 2d 4h)
+  Weekly (Opus)        ████████████████░░░░   83%  (resets in 1d)  [high]
+  Weekly breakdown: Sonnet 40%, Opus 14%
+```
+
+`r` refetches (`:Crust usage refresh` does the same), `q`/`<Esc>` closes.
+The numbers come from the oauth usage endpoint with a token from
+`pi auth print-bearer-token --provider anthropic`; they are cached for 60s
+because the endpoint is rate limited, and a failed request keeps showing the
+last answer with a note.
+
+The prompt bar carries the short form whenever an **anthropic** model is
+selected:
+
+```
+󰾆 5h 21% · wk 54%                                       󰚩 claude-opus-4-6
+```
+
+It is the `usage` input-bar component, orange from 50% and red from 80%.
+Swap it for the per-session dollars with
+`input_bar = { layout = { left = { "cost" } } }`.
+
 ## Debugging
 
 `:Crust debug` (or `require("crust").debug()`) opens the raw rpc of every

@@ -120,7 +120,7 @@ local M = {}
 ---@field status_text string shown next to the spinner while the agent works, empty for the icon alone
 ---@field keymaps Crust.Config.Keymaps
 ---@field window Crust.Config.Window chat panel geometry
----@field input_bar Crust.Config.InputBar cost and model under the prompt
+---@field input_bar Crust.Config.InputBar plan usage and model under the prompt
 ---@field thinking Crust.Config.Thinking the model's reasoning text
 ---@field compaction Crust.Config.Compaction shrinking the context when it fills up
 ---@field ask Crust.Config.Ask permission and other extension dialogs
@@ -190,12 +190,17 @@ M.defaults = {
 	},
 	input_bar = {
 		enabled = true,
-		-- What the turn costs on one side, what is answering on the other.
+		-- What is left of the plan on one side, what is answering on the
+		-- other. `cost` is available too, it is just not what a subscription
+		-- is billed on.
 		layout = {
-			left = { "cost" },
+			left = { "usage" },
 			right = { "model" },
 		},
 		components = {
+			-- Same thresholds as the usage float: orange from half the plan,
+			-- red when there is little left.
+			usage = { icon = "󰾆", warn = 50, error = 80 },
 			cost = { icon = nil },
 			model = { icon = "󰚩" },
 			tokens = { icon = "\u{f0ec}" },
