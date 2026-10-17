@@ -26,6 +26,11 @@ local subcommands = {
 	transcript = function()
 		require("crust").transcript()
 	end,
+	-- `:Crust usage refresh` asks Anthropic again instead of reusing the
+	-- cached answer.
+	usage = function(args)
+		require("crust").usage({ force = args[1] == "refresh" or nil })
+	end,
 	-- `:Crust debug pretty` expands the json of each rpc line.
 	debug = function(args)
 		require("crust").debug({ pretty = args[1] == "pretty" or nil })

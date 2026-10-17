@@ -93,6 +93,50 @@ function InputBar.components.cost(state, opts)
 	return string.format("$%.3f", state.cost), threshold(state.cost, opts)
 end
 
+--- `5h 21% · wk 54%`, the Claude plan limits of the account pi is logged
+--- into. Only anthropic models have them, and nothing is drawn until the
+--- first answer from the API lands (`InputBar:render` asks for it).
+function InputBar.components.usage(state, opts)
+	if state.model_provider ~= "anthropic" then
+		return nil
+	end
+
+	local data = require("crust.usage").peek()
+	if not data then
+		return nil
+	end
+
+	local summary = require("crust.usage.render").summary(data)
+	local parts = {
+		{ prefix = "5h ", row = summary.session },
+		{ prefix = "wk ", row = summary.weekly },
+	}
+
+	---@type Crust.Chat.InputBar.Chunk[]
+	local chunks = {}
+	if type(opts.icon) == "string" and opts.icon ~= "" then
+		chunks[#chunks + 1] = { opts.icon .. " ", Highlights.INPUT_BAR }
+	end
+
+	for _, part in ipairs(parts) do
+		local row = part.row
+		if row and row.percent then
+			if #chunks > 0 and chunks[#chunks][1]:sub(-1) ~= " " then
+				chunks[#chunks + 1] = { " · ", Highlights.INPUT_BAR }
+			end
+			chunks[#chunks + 1] = {
+				part.prefix .. row.percent .. "%",
+				threshold(row.percent, opts) or Highlights.INPUT_BAR,
+			}
+		end
+	end
+
+	if #chunks == 0 or (#chunks == 1 and chunks[1][1]:sub(-1) == " ") then
+		return nil
+	end
+	return chunks
+end
+
 --- `claude-opus-4-6`.
 function InputBar.components.model(state)
 	return state.model_id
@@ -461,6 +505,8 @@ function InputBar:render()
 		return self:clear()
 	end
 
+	self:_ensure_usage()
+
 	local chunks = self:line(text_width(win))
 	if #chunks == 0 then
 		return self:clear()
@@ -483,6 +529,26 @@ function InputBar:render()
 		id = self._extmark,
 		virt_lines = virt_lines,
 	})
+end
+
+--- Keep the plan usage of an anthropic model current.
+---
+--- `ensure` is a no-op while the 60s cache is fresh or a request is in
+--- flight, so this cannot loop: the only render it triggers is the one
+--- after a new answer landed.
+---@private
+function InputBar:_ensure_usage()
+	if self._state.model_provider ~= "anthropic" then
+		return
+	end
+
+	require("crust.usage").ensure(function()
+		vim.schedule(function()
+			if vim.api.nvim_buf_is_valid(self._buf) then
+				self:render()
+			end
+		end)
+	end)
 end
 
 --- Take the bar off the buffer, keeping the state it collected.

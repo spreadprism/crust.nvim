@@ -237,6 +237,14 @@ function M.transcript()
 	return M.chat():transcript()
 end
 
+--- Show the Claude plan limits (5-hour session, weekly) of the account pi
+--- is logged into, the equivalent of Claude Code's `/usage`.
+---@param opts? { force?: boolean } `force` skips the 60s cache
+---@return integer? win
+function M.usage(opts)
+	return require("crust.ui.usage").open(opts)
+end
+
 --- Open the raw rpc of every live pi process in a new tab: what was sent,
 --- what came back, and what pi wrote to stderr, which is where a provider
 --- or auth failure says what it actually was.
